@@ -1,0 +1,152 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orca-managed-agents-postgres-init
+  namespace: __NAMESPACE__
+data:
+  init.sql: |
+    CREATE DATABASE transcriptstore;
+    CREATE DATABASE filestore;
+    CREATE DATABASE memorystore;
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orca-managed-agents-postgres
+  namespace: __NAMESPACE__
+  labels:
+    app.kubernetes.io/name: orca-managed-agents-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orca-managed-agents-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orca-managed-agents-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: orca
+            - name: POSTGRES_PASSWORD
+              value: orca
+            - name: POSTGRES_DB
+              value: registry
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, orca, -d, registry]
+            initialDelaySeconds: 3
+            periodSeconds: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: init
+          configMap:
+            name: orca-managed-agents-postgres-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orca-managed-agents-postgres
+  namespace: __NAMESPACE__
+spec:
+  selector:
+    app.kubernetes.io/name: orca-managed-agents-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orca-managed-agents-minio
+  namespace: __NAMESPACE__
+  labels:
+    app.kubernetes.io/name: orca-managed-agents-minio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orca-managed-agents-minio
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orca-managed-agents-minio
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:RELEASE.2024-10-13T13-34-11Z
+          imagePullPolicy: IfNotPresent
+          args: [server, /data, --console-address, ":9001"]
+          ports:
+            - name: s3
+              containerPort: 9000
+          env:
+            - name: MINIO_ROOT_USER
+              value: minioadmin
+            - name: MINIO_ROOT_PASSWORD
+              value: minioadmin
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: s3
+            periodSeconds: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orca-managed-agents-minio
+  namespace: __NAMESPACE__
+spec:
+  selector:
+    app.kubernetes.io/name: orca-managed-agents-minio
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: s3
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: orca-managed-agents-minio-init
+  namespace: __NAMESPACE__
+spec:
+  backoffLimit: 12
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: minio-client
+          image: minio/mc:RELEASE.2024-10-08T09-37-26Z
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -ec
+            - |
+              until mc alias set local http://orca-managed-agents-minio:9000 minioadmin minioadmin; do
+                sleep 2
+              done
+              mc mb --ignore-existing local/orca-files
