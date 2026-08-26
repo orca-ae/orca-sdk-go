@@ -16,7 +16,7 @@ type PackagesClient struct {
 // NewPackagesClient creates a workspace packages client. Packages are a StreamNative Cloud
 // extension, served under CloudExtensionBasePath.
 func NewPackagesClient(client *Client) *PackagesClient {
-	return &PackagesClient{client: client.WithPathPrefix(CloudExtensionBasePath)}
+	return &PackagesClient{client: client.scoped(CloudExtensionBasePath)}
 }
 
 // List returns all package names for the given package type.

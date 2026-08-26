@@ -28,12 +28,12 @@ func NewClientWithWarningWriter(baseURL, token string, httpClient *http.Client, 
 func NewUnauthenticatedClient(baseURL string, httpClient *http.Client) (*Client, error)
 func NewUnauthenticatedClientWithWarningWriter(baseURL string, httpClient *http.Client, warningWriter io.Writer) (*Client, error)
 func (c *Client) Delete(ctx context.Context, path string, opts ...option.RequestOption) error
-func (c *Client) GetAPIGroups(ctx context.Context) (*APIGroupList, error)
-func (c *Client) GetAPIVersions(ctx context.Context) (*APIVersions, error)
-func (c *Client) GetCloudAPIResources(ctx context.Context) (*APIResourceList, error)
-func (c *Client) GetHealthz(ctx context.Context) (*CoreProbeStatus, error)
+func (c *Client) GetAPIGroups(ctx context.Context, opts ...option.RequestOption) (*APIGroupList, error)
+func (c *Client) GetAPIVersions(ctx context.Context, opts ...option.RequestOption) (*APIVersions, error)
+func (c *Client) GetCloudAPIResources(ctx context.Context, opts ...option.RequestOption) (*APIResourceList, error)
+func (c *Client) GetHealthz(ctx context.Context, opts ...option.RequestOption) (*CoreProbeStatus, error)
 func (c *Client) GetJSON(ctx context.Context, path string, out interface{}, opts ...option.RequestOption) error
-func (c *Client) GetReadyz(ctx context.Context) (*CoreProbeStatus, error)
+func (c *Client) GetReadyz(ctx context.Context, opts ...option.RequestOption) (*CoreProbeStatus, error)
 func (c *Client) GetStream(
 func (c *Client) GetToWriter(ctx context.Context, path string, writer io.Writer, opts ...option.RequestOption) error
 func (c *Client) PatchJSON(ctx context.Context, path string, body interface{}, out interface{}, opts ...option.RequestOption) error
@@ -209,6 +209,161 @@ func (c *SourcesClient) Update(ctx context.Context, name string, cfg RegistrySou
 func (l *APIGroupList) HasGroup(name string) bool
 ```
 
+### CloudAPIResourceService
+
+```go
+func (s CloudAPIResourceService) List(ctx context.Context, opts ...option.RequestOption) (*APIResourceList, error)
+```
+
+### CloudAgentProviderService
+
+```go
+func (s CloudAgentProviderService) Get(ctx context.Context, name string, opts ...option.RequestOption) (*AgentProviderInfo, error)
+func (s CloudAgentProviderService) List(ctx context.Context, opts ...option.RequestOption) ([]AgentProviderInfo, error)
+```
+
+### CloudCatalogKafkaService
+
+```go
+func (s CloudCatalogKafkaService) Get(ctx context.Context, name string, opts ...option.RequestOption) ([]ConfigFieldDefinition, error)
+func (s CloudCatalogKafkaService) List(ctx context.Context, opts ...option.RequestOption) ([]ConnectorDefinition, error)
+```
+
+### CloudCatalogSinkService
+
+```go
+func (s CloudCatalogSinkService) Get(ctx context.Context, name string, opts ...option.RequestOption) ([]ConfigFieldDefinition, error)
+func (s CloudCatalogSinkService) List(ctx context.Context, opts ...option.RequestOption) ([]ConnectorDefinition, error)
+```
+
+### CloudCatalogSourceService
+
+```go
+func (s CloudCatalogSourceService) Get(ctx context.Context, name string, opts ...option.RequestOption) ([]ConfigFieldDefinition, error)
+func (s CloudCatalogSourceService) List(ctx context.Context, opts ...option.RequestOption) ([]ConnectorDefinition, error)
+```
+
+### CloudConnectionService
+
+```go
+func (s CloudConnectionService) Create(ctx context.Context, cfg ConnectionConfig, opts ...option.RequestOption) error
+func (s CloudConnectionService) Delete(ctx context.Context, name string, opts ...option.RequestOption) error
+func (s CloudConnectionService) Get(ctx context.Context, name string, opts ...option.RequestOption) (*ConnectionConfig, error)
+func (s CloudConnectionService) List(ctx context.Context, opts ...option.RequestOption) ([]ConnectionConfig, error)
+func (s CloudConnectionService) Test(ctx context.Context, name string, opts ...option.RequestOption) (*ConnectionHealthStatus, error)
+func (s CloudConnectionService) Update(ctx context.Context, name string, cfg ConnectionConfig, opts ...option.RequestOption) error
+func (s CloudConnectionService) Validate(ctx context.Context, cfg ConnectionConfig, opts ...option.RequestOption) error
+```
+
+### CloudConnectorKafkaService
+
+```go
+func (s CloudConnectorKafkaService) AlterOffsets(ctx context.Context, connector string, offsets ConnectorOffsets, opts ...option.RequestOption) error
+func (s CloudConnectorKafkaService) CreateConnector(ctx context.Context, req CreateConnectorRequest, opts ...option.RequestOption) (*ConnectorInfo, error)
+func (s CloudConnectorKafkaService) DeleteConnector(ctx context.Context, name string, opts ...option.RequestOption) error
+func (s CloudConnectorKafkaService) DescribePluginConfig(ctx context.Context, pluginName string, opts ...option.RequestOption) ([]ConfigKeyInfo, error)
+func (s CloudConnectorKafkaService) GetActiveTopics(ctx context.Context, connector string, opts ...option.RequestOption) (ConnectorActiveTopics, error)
+func (s CloudConnectorKafkaService) GetConnector(ctx context.Context, name string, opts ...option.RequestOption) (*ConnectorInfo, error)
+func (s CloudConnectorKafkaService) GetConnectorConfig(ctx context.Context, name string, opts ...option.RequestOption) (map[string]string, error)
+func (s CloudConnectorKafkaService) GetConnectorStatus(ctx context.Context, name string, opts ...option.RequestOption) (*ConnectorStateInfo, error)
+func (s CloudConnectorKafkaService) GetConnectorTasks(ctx context.Context, name string, opts ...option.RequestOption) ([]TaskConfig, error)
+func (s CloudConnectorKafkaService) GetConnectorTasksConfig(ctx context.Context, name string, opts ...option.RequestOption) (map[string]map[string]string, error)
+func (s CloudConnectorKafkaService) GetHealth(ctx context.Context, opts ...option.RequestOption) (*WorkerStatus, error)
+func (s CloudConnectorKafkaService) GetInfo(ctx context.Context, opts ...option.RequestOption) (*ServerInfo, error)
+func (s CloudConnectorKafkaService) GetOffsets(ctx context.Context, connector string, opts ...option.RequestOption) (*ConnectorOffsets, error)
+func (s CloudConnectorKafkaService) GetTaskStatus(ctx context.Context, connector string, taskID int, opts ...option.RequestOption) (*TaskState, error)
+func (s CloudConnectorKafkaService) ListConnectors(ctx context.Context, opts ...option.RequestOption) ([]string, error)
+func (s CloudConnectorKafkaService) ListPluginCatalog(ctx context.Context, opts ...option.RequestOption) ([]FunctionMeshConnectorDefinition, error)
+func (s CloudConnectorKafkaService) PauseConnector(ctx context.Context, name string, opts ...option.RequestOption) error
+func (s CloudConnectorKafkaService) ResetActiveTopics(ctx context.Context, connector string, opts ...option.RequestOption) error
+func (s CloudConnectorKafkaService) ResetOffsets(ctx context.Context, connector string, opts ...option.RequestOption) error
+func (s CloudConnectorKafkaService) RestartConnector(ctx context.Context, name string, opts ...option.RequestOption) error
+func (s CloudConnectorKafkaService) RestartConnectorWithOptions(ctx context.Context, name string, options RestartConnectorOptions, opts ...option.RequestOption) (*ConnectorStateInfo, error)
+func (s CloudConnectorKafkaService) RestartTask(ctx context.Context, connector string, taskID int, opts ...option.RequestOption) error
+func (s CloudConnectorKafkaService) ResumeConnector(ctx context.Context, name string, opts ...option.RequestOption) error
+func (s CloudConnectorKafkaService) StopConnector(ctx context.Context, name string, opts ...option.RequestOption) error
+func (s CloudConnectorKafkaService) UpdateConnectorConfig(ctx context.Context, name string, config map[string]string, opts ...option.RequestOption) (*ConnectorInfo, error)
+```
+
+### CloudConnectorSinkService
+
+```go
+func (s CloudConnectorSinkService) Create(ctx context.Context, cfg RegistrySinkConfig, filePath, packageURL string, opts ...option.RequestOption) error
+func (s CloudConnectorSinkService) Delete(ctx context.Context, name string, opts ...option.RequestOption) error
+func (s CloudConnectorSinkService) Get(ctx context.Context, name string, opts ...option.RequestOption) (*RegistrySinkConfig, error)
+func (s CloudConnectorSinkService) InstanceStatus(ctx context.Context, name, instanceID string, opts ...option.RequestOption) (*SinkInstanceStatusData, error)
+func (s CloudConnectorSinkService) List(ctx context.Context, opts ...option.RequestOption) ([]string, error)
+func (s CloudConnectorSinkService) Restart(ctx context.Context, name string, opts ...option.RequestOption) error
+func (s CloudConnectorSinkService) RestartInstance(ctx context.Context, name, instanceID string, opts ...option.RequestOption) error
+func (s CloudConnectorSinkService) Start(ctx context.Context, name string, opts ...option.RequestOption) error
+func (s CloudConnectorSinkService) StartInstance(ctx context.Context, name, instanceID string, opts ...option.RequestOption) error
+func (s CloudConnectorSinkService) Status(ctx context.Context, name string, opts ...option.RequestOption) (*SinkStatus, error)
+func (s CloudConnectorSinkService) Stop(ctx context.Context, name string, opts ...option.RequestOption) error
+func (s CloudConnectorSinkService) StopInstance(ctx context.Context, name, instanceID string, opts ...option.RequestOption) error
+func (s CloudConnectorSinkService) Update(ctx context.Context, name string, cfg RegistrySinkConfig, filePath, packageURL string, updateOptions *UpdateOptionsImpl, opts ...option.RequestOption) error
+```
+
+### CloudConnectorSourceService
+
+```go
+func (s CloudConnectorSourceService) Create(ctx context.Context, cfg RegistrySourceConfig, filePath, packageURL string, opts ...option.RequestOption) error
+func (s CloudConnectorSourceService) Delete(ctx context.Context, name string, opts ...option.RequestOption) error
+func (s CloudConnectorSourceService) Get(ctx context.Context, name string, opts ...option.RequestOption) (*RegistrySourceConfig, error)
+func (s CloudConnectorSourceService) InstanceStatus(ctx context.Context, name, instanceID string, opts ...option.RequestOption) (*SourceInstanceStatusData, error)
+func (s CloudConnectorSourceService) List(ctx context.Context, opts ...option.RequestOption) ([]string, error)
+func (s CloudConnectorSourceService) Restart(ctx context.Context, name string, opts ...option.RequestOption) error
+func (s CloudConnectorSourceService) RestartInstance(ctx context.Context, name, instanceID string, opts ...option.RequestOption) error
+func (s CloudConnectorSourceService) Start(ctx context.Context, name string, opts ...option.RequestOption) error
+func (s CloudConnectorSourceService) StartInstance(ctx context.Context, name, instanceID string, opts ...option.RequestOption) error
+func (s CloudConnectorSourceService) Status(ctx context.Context, name string, opts ...option.RequestOption) (*SourceStatus, error)
+func (s CloudConnectorSourceService) Stop(ctx context.Context, name string, opts ...option.RequestOption) error
+func (s CloudConnectorSourceService) StopInstance(ctx context.Context, name, instanceID string, opts ...option.RequestOption) error
+func (s CloudConnectorSourceService) Update(ctx context.Context, name string, cfg RegistrySourceConfig, filePath, packageURL string, updateOptions *UpdateOptionsImpl, opts ...option.RequestOption) error
+```
+
+### CloudFunctionService
+
+```go
+func (s CloudFunctionService) Create(ctx context.Context, cfg RegistryFunctionConfig, filePath, packageURL string, opts ...option.RequestOption) error
+func (s CloudFunctionService) Delete(ctx context.Context, name string, opts ...option.RequestOption) error
+func (s CloudFunctionService) Get(ctx context.Context, name string, opts ...option.RequestOption) (*RegistryFunctionConfig, error)
+func (s CloudFunctionService) GetState(ctx context.Context, name, key string, opts ...option.RequestOption) (*FunctionState, error)
+func (s CloudFunctionService) InstanceStats(ctx context.Context, name, instanceID string, opts ...option.RequestOption) (*FunctionInstanceStatsData, error)
+func (s CloudFunctionService) InstanceStatus(ctx context.Context, name, instanceID string, opts ...option.RequestOption) (*FunctionInstanceStatusData, error)
+func (s CloudFunctionService) List(ctx context.Context, opts ...option.RequestOption) ([]string, error)
+func (s CloudFunctionService) PutState(ctx context.Context, name, key string, state FunctionState, opts ...option.RequestOption) error
+func (s CloudFunctionService) Restart(ctx context.Context, name string, opts ...option.RequestOption) error
+func (s CloudFunctionService) RestartInstance(ctx context.Context, name, instanceID string, opts ...option.RequestOption) error
+func (s CloudFunctionService) Start(ctx context.Context, name string, opts ...option.RequestOption) error
+func (s CloudFunctionService) StartInstance(ctx context.Context, name, instanceID string, opts ...option.RequestOption) error
+func (s CloudFunctionService) Stats(ctx context.Context, name string, opts ...option.RequestOption) (*FunctionStats, error)
+func (s CloudFunctionService) Status(ctx context.Context, name string, opts ...option.RequestOption) (*FunctionStatus, error)
+func (s CloudFunctionService) Stop(ctx context.Context, name string, opts ...option.RequestOption) error
+func (s CloudFunctionService) StopInstance(ctx context.Context, name, instanceID string, opts ...option.RequestOption) error
+func (s CloudFunctionService) Trigger(ctx context.Context, name, data, dataFilePath, topic string, opts ...option.RequestOption) (string, error)
+func (s CloudFunctionService) Update(ctx context.Context, name string, cfg RegistryFunctionConfig, filePath, packageURL string, updateOptions *UpdateOptionsImpl, opts ...option.RequestOption) error
+```
+
+### CloudHealthService
+
+```go
+func (s CloudHealthService) Health(ctx context.Context, opts ...option.RequestOption) (bool, error)
+func (s CloudHealthService) Live(ctx context.Context, opts ...option.RequestOption) (bool, error)
+func (s CloudHealthService) Ready(ctx context.Context, opts ...option.RequestOption) (bool, error)
+```
+
+### CloudPackageService
+
+```go
+func (s CloudPackageService) Delete(ctx context.Context, packageType, packageName, version string, opts ...option.RequestOption) error
+func (s CloudPackageService) Download(ctx context.Context, packageType, packageName, version string, writer io.Writer, opts ...option.RequestOption) error
+func (s CloudPackageService) GetMetadata(ctx context.Context, packageType, packageName, version string, opts ...option.RequestOption) (*PackageMetadata, error)
+func (s CloudPackageService) List(ctx context.Context, packageType string, opts ...option.RequestOption) ([]string, error)
+func (s CloudPackageService) ListVersions(ctx context.Context, packageType, packageName string, opts ...option.RequestOption) ([]string, error)
+func (s CloudPackageService) UpdateMetadata(ctx context.Context, packageType, packageName, version string, metadata PackageMetadata, opts ...option.RequestOption) error
+func (s CloudPackageService) Upload(ctx context.Context, packageType, packageName, version, filePath string, metadata PackageMetadata, opts ...option.RequestOption) error
+```
+
 ### ConnectionConfig
 
 ```go
@@ -247,6 +402,10 @@ func ToConnectionList(configs []ConnectionConfig) ConnectionList
 - `AuthenticationError`
 - `BadRequestError`
 - `BatchSourceConfig`
+- `CloudAgentService`
+- `CloudCatalogService`
+- `CloudConnectorService`
+- `CloudService`
 - `ConfigFieldDefinition`
 - `ConfigKeyInfo`
 - `ConflictError`
@@ -273,6 +432,7 @@ func ToConnectionList(configs []ConnectionConfig) ConnectionList
 - `CreateConnectorRequest`
 - `DecodeError`
 - `Error`
+- `ExtensionNotAvailableError`
 - `FunctionInstanceStats`
 - `FunctionInstanceStatsData`
 - `FunctionInstanceStatsDataBase`

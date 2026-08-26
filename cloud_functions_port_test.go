@@ -5,9 +5,11 @@ package orca
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	util "github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+	"github.com/orca-ae/orca-sdk-go/option"
 )
 
 // Ported from orca-sdk-typescript tests/api-resources/cloud/functions.test.ts.
@@ -333,12 +335,77 @@ func TestCloudFunctionsTriggerAcceptsAnEmptyResponse(t *testing.T) {
 // for discovery and void operations".
 func TestCloudFunctionsPreservesRequestHeaders(t *testing.T) {
 	t.Parallel()
-	t.Skip("not implemented: per-request options (caller-supplied headers, per-call defaultBaseURL); " +
-		"this SDK has no options argument, only Client.WithDefaultHeader on the whole client")
+
+	t.Run("a per-call header reaches the request", func(t *testing.T) {
+		t.Parallel()
+
+		client, transport := newRecordingClientWith(t, cloudGroupsThenEmpty(t))
+
+		_, err := client.Cloud.Functions.List(context.Background(),
+			option.WithHeader("X-Trace-Id", "trace-42"))
+		if err != nil {
+			t.Fatalf("List() error = %v", err)
+		}
+
+		call := lastResourceCall(t, transport)
+		if got := call.Header.Get("X-Trace-Id"); got != "trace-42" {
+			t.Errorf("X-Trace-Id = %q, want %q", got, "trace-42")
+		}
+		// The credential is still attached: a per-call header adds to the
+		// request rather than replacing what the client already sets.
+		if got := call.Header.Get("Authorization"); got == "" {
+			t.Error("Authorization = empty, want the client credential preserved")
+		}
+	})
+
+	t.Run("a per-call base URL redirects the request", func(t *testing.T) {
+		t.Parallel()
+
+		client, transport := newRecordingClientWith(t, cloudGroupsThenEmpty(t))
+
+		_, err := client.Cloud.Functions.List(context.Background(),
+			option.WithBaseURL("https://other.example.test"))
+		if err != nil {
+			t.Fatalf("List() error = %v", err)
+		}
+
+		call := lastResourceCall(t, transport)
+		want := "https://other.example.test/apis/cloud.sn.io/v1/functions"
+		if got := call.URL.String(); got != want {
+			t.Errorf("URL = %q, want %q", got, want)
+		}
+	})
+}
+
+// cloudGroupsThenEmpty answers the discovery probe with the cloud group and
+// every other request with an empty list, so a gated call reaches its resource.
+func cloudGroupsThenEmpty(t *testing.T) responder {
+	t.Helper()
+	return func(req *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(req.URL.Path, "/apis") || req.URL.Path == "/apis" {
+			return jsonResponse(http.StatusOK,
+				`{"kind":"APIGroupList","groups":[{"name":"cloud.sn.io","versions":[]}]}`), nil
+		}
+		return jsonResponse(http.StatusOK, `[]`), nil
+	}
+}
+
+// lastResourceCall returns the most recent request that was not the discovery
+// probe.
+func lastResourceCall(t *testing.T, transport *recordingTransport) capturedCall {
+	t.Helper()
+	calls := transport.Calls()
+	for i := len(calls) - 1; i >= 0; i-- {
+		if calls[i].URL.Path != "/apis" {
+			return calls[i]
+		}
+	}
+	t.Fatal("no resource request was captured")
+	return capturedCall{}
 }
 
 // TestCloudFunctionsGating ports "gates %s before the function API request".
 func TestCloudFunctionsGating(t *testing.T) {
 	t.Parallel()
-	t.Skip(cloudGatingUnimplemented)
+	assertServiceGated(t, "Cloud.Functions", func(c *Client) any { return c.Cloud.Functions })
 }

@@ -15,7 +15,7 @@ type CatalogClient struct {
 // NewCatalogClient creates a workspace catalog client. The built-in connector catalog is a
 // StreamNative Cloud extension, served under CloudExtensionBasePath.
 func NewCatalogClient(client *Client) *CatalogClient {
-	return &CatalogClient{client: client.WithPathPrefix(CloudExtensionBasePath)}
+	return &CatalogClient{client: client.scoped(CloudExtensionBasePath)}
 }
 
 // ListSources returns all built-in source connector definitions visible in the current workspace.

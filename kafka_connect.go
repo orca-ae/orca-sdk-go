@@ -23,7 +23,7 @@ func NewKafkaConnectClient(client *Client) *KafkaConnectClient {
 	if client == nil {
 		return &KafkaConnectClient{}
 	}
-	return &KafkaConnectClient{client: client.WithPathPrefix(CloudExtensionBasePath)}
+	return &KafkaConnectClient{client: client.scoped(CloudExtensionBasePath)}
 }
 
 // GetInfo returns Kafka Connect server info.

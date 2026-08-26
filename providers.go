@@ -15,7 +15,7 @@ type ProvidersClient struct {
 // NewProvidersClient creates a workspace providers client. Agent provider discovery is a
 // StreamNative Cloud extension, served under CloudExtensionBasePath.
 func NewProvidersClient(client *Client) *ProvidersClient {
-	return &ProvidersClient{client: client.WithPathPrefix(CloudExtensionBasePath)}
+	return &ProvidersClient{client: client.scoped(CloudExtensionBasePath)}
 }
 
 // List returns all managed-agent providers visible in the current workspace.

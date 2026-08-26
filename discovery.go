@@ -2,7 +2,11 @@
 
 package orca
 
-import "context"
+import (
+	"context"
+
+	"github.com/orca-ae/orca-sdk-go/option"
+)
 
 const (
 	// CloudExtensionGroup is the DNS-scoped name of the StreamNative Cloud extension group, as
@@ -78,18 +82,18 @@ func (l *APIGroupList) HasGroup(name string) bool {
 // successful response with an empty Groups list (server supports discovery but has no extensions
 // installed) - callers that gate a command on a specific group should treat those as different
 // diagnoses.
-func (c *Client) GetAPIGroups(ctx context.Context) (*APIGroupList, error) {
+func (c *Client) GetAPIGroups(ctx context.Context, opts ...option.RequestOption) (*APIGroupList, error) {
 	var result APIGroupList
-	if err := c.GetJSON(ctx, "apis", &result); err != nil {
+	if err := c.getRootJSON(ctx, "apis", &result, opts...); err != nil {
 		return nil, err
 	}
 	return &result, nil
 }
 
 // GetCloudAPIResources calls authenticated GET /apis/cloud.sn.io/v1/ at the host root.
-func (c *Client) GetCloudAPIResources(ctx context.Context) (*APIResourceList, error) {
+func (c *Client) GetCloudAPIResources(ctx context.Context, opts ...option.RequestOption) (*APIResourceList, error) {
 	var result APIResourceList
-	if err := c.GetJSON(ctx, CloudExtensionBasePath+"/", &result); err != nil {
+	if err := c.getRootJSON(ctx, CloudExtensionBasePath+"/", &result, opts...); err != nil {
 		return nil, err
 	}
 	return &result, nil

@@ -2,7 +2,11 @@
 
 package orca
 
-import "context"
+import (
+	"context"
+
+	"github.com/orca-ae/orca-sdk-go/option"
+)
 
 // APIVersions describes the core API versions served by a deployment.
 type APIVersions struct {
@@ -18,27 +22,27 @@ type CoreProbeStatus struct {
 }
 
 // GetAPIVersions calls authenticated GET /api at the deployment host root.
-func (c *Client) GetAPIVersions(ctx context.Context) (*APIVersions, error) {
+func (c *Client) GetAPIVersions(ctx context.Context, opts ...option.RequestOption) (*APIVersions, error) {
 	var result APIVersions
-	if err := c.GetJSON(ctx, "api", &result); err != nil {
+	if err := c.getRootJSON(ctx, "api", &result, opts...); err != nil {
 		return nil, err
 	}
 	return &result, nil
 }
 
 // GetHealthz calls GET /healthz at the deployment host root.
-func (c *Client) GetHealthz(ctx context.Context) (*CoreProbeStatus, error) {
-	return c.getCoreProbe(ctx, "healthz")
+func (c *Client) GetHealthz(ctx context.Context, opts ...option.RequestOption) (*CoreProbeStatus, error) {
+	return c.getCoreProbe(ctx, "healthz", opts...)
 }
 
 // GetReadyz calls GET /readyz at the deployment host root.
-func (c *Client) GetReadyz(ctx context.Context) (*CoreProbeStatus, error) {
-	return c.getCoreProbe(ctx, "readyz")
+func (c *Client) GetReadyz(ctx context.Context, opts ...option.RequestOption) (*CoreProbeStatus, error) {
+	return c.getCoreProbe(ctx, "readyz", opts...)
 }
 
-func (c *Client) getCoreProbe(ctx context.Context, path string) (*CoreProbeStatus, error) {
+func (c *Client) getCoreProbe(ctx context.Context, path string, opts ...option.RequestOption) (*CoreProbeStatus, error) {
 	var result CoreProbeStatus
-	if err := c.GetJSON(ctx, path, &result); err != nil {
+	if err := c.getRootJSON(ctx, path, &result, opts...); err != nil {
 		return nil, err
 	}
 	return &result, nil

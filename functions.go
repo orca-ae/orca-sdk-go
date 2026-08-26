@@ -21,7 +21,7 @@ type FunctionsClient struct {
 // NewFunctionsClient creates a workspace functions client. Functions are a StreamNative Cloud
 // extension, served under CloudExtensionBasePath.
 func NewFunctionsClient(client *Client) *FunctionsClient {
-	return &FunctionsClient{client: client.WithPathPrefix(CloudExtensionBasePath)}
+	return &FunctionsClient{client: client.scoped(CloudExtensionBasePath)}
 }
 
 // List returns all function names visible in the current workspace.

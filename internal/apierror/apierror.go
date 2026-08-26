@@ -290,3 +290,28 @@ func Errorf(format string, args ...any) error {
 	err := fmt.Errorf(format, args...)
 	return &RequestError{Message: err.Error(), Err: errors.Unwrap(err)}
 }
+
+// ExtensionNotAvailableError is a call to an API extension the deployment does
+// not serve.
+//
+// It exists so this case is distinguishable from a resource that happens to be
+// missing. Both would otherwise arrive as a 404 from a path the caller has no
+// reason to doubt, and the difference matters: one means "create it", the other
+// means "this deployment cannot do that at all".
+type ExtensionNotAvailableError struct {
+	// Group is the API group that was required, e.g. "cloud.sn.io".
+	Group string
+
+	// BaseURL is the deployment that was asked.
+	BaseURL string
+
+	// Reason says how the deployment answered - no extensions installed, a
+	// different set of extensions, or no discovery endpoint at all.
+	Reason string
+}
+
+func (e *ExtensionNotAvailableError) isOrcaError() {}
+
+func (e *ExtensionNotAvailableError) Error() string {
+	return fmt.Sprintf("the %q extension group is not available on %s: %s", e.Group, e.BaseURL, e.Reason)
+}
