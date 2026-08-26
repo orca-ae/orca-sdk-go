@@ -112,10 +112,12 @@ jobs:
         run: |
           set -uo pipefail
           base="$(git merge-base HEAD origin/main)"
-          ./scripts/detect-breaking-changes "$base"
-          status=$?
+          # `|| status=$?` rather than a bare call: Actions runs this shell with
+          # -e, which would kill the step on a non-zero exit before the code
+          # could be captured - and the whole point is to react to it.
+          status=0
+          ./scripts/detect-breaking-changes "$base" || status=$?
           echo "status=$status" >> "$GITHUB_OUTPUT"
-          exit 0
 
       - name: Report the result
         run: |
