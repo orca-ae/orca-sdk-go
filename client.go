@@ -47,6 +47,9 @@ type Client struct {
 	// cache of the same deployment's capabilities.
 	discovery *discoveryCache
 
+	// Agents manages agents and their version history.
+	Agents AgentService
+
 	// Cloud is the StreamNative Cloud extension surface. Every call through it
 	// is gated on the deployment advertising the cloud.sn.io group.
 	Cloud CloudService
@@ -58,6 +61,7 @@ func newClientFrom(cfg *requestconfig.RequestConfig, discovery *discoveryCache) 
 		discovery = newDiscoveryCache()
 	}
 	client := &Client{cfg: cfg, discovery: discovery}
+	client.Agents = newAgentService(client)
 	client.Cloud = newCloudService(client)
 	return client
 }

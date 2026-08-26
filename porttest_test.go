@@ -26,13 +26,6 @@ import (
 // The copied Go tests in this package use httptest.NewServer instead and assert
 // literal paths. Both are kept: they cover the same code from different angles.
 
-// pendingManagedAgents is the single skip reason for ported tests that specify
-// the typed Managed Agents resources, which this SDK does not implement yet.
-// Counting these reports the outstanding surface:
-//
-//	go test -v ./... 2>&1 | grep -c "pending: typed Managed Agents"
-const pendingManagedAgents = "pending: typed Managed Agents resources"
-
 // capturedCall is one request observed by recordingTransport.
 type capturedCall struct {
 	Method string

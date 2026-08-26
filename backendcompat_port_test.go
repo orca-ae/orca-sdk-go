@@ -190,14 +190,50 @@ func TestSharedBackendCompatibilityCorePaths(t *testing.T) {
 func TestSharedBackendCompatibilityTypedResources(t *testing.T) {
 	t.Parallel()
 
-	for _, accessor := range []string{
-		"agents.retrieve",
-		"sessions.files.retrieve",
-		"triggers.retrieve",
-	} {
-		t.Run(accessor, func(t *testing.T) {
+	// The same claim as the raw-path test above, made through the typed
+	// accessors: whichever base-URL shape a deployment was configured with, a
+	// typed resource has to produce the identical core path. The typed layer is
+	// where a stray prefix would be easiest to introduce and hardest to notice.
+	tests := []struct {
+		name    string
+		baseURL string
+	}{
+		{name: "a host-root base URL", baseURL: "https://engine.example.test"},
+		{name: "a legacy union base URL", baseURL: "https://engine.example.test/v1/registry"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			t.Skip(pendingManagedAgents)
+
+			transport := &recordingTransport{respond: backendCompatResponder}
+			client, err := NewClientWithWarningWriter(
+				tc.baseURL, "test-key", &http.Client{Transport: transport}, io.Discard,
+			)
+			if err != nil {
+				t.Fatalf("client for %q error = %v", tc.baseURL, err)
+			}
+
+			t.Run("agents.retrieve", func(t *testing.T) {
+				agent, err := client.Agents.Get(context.Background(), "agent_abc", AgentGetParams{})
+				if err != nil {
+					t.Fatalf("Agents.Get() error = %v", err)
+				}
+				if agent.ID != "agent_abc" {
+					t.Errorf("id = %q, want %q", agent.ID, "agent_abc")
+				}
+				if got, want := transport.Last(t).Path(), "/v1/agents/agent_abc"; got != want {
+					t.Errorf("path = %q, want %q", got, want)
+				}
+			})
+
+			t.Run("sessions.files.retrieve", func(t *testing.T) {
+				t.Skip(pendingManagedAgents)
+			})
+
+			t.Run("triggers.retrieve", func(t *testing.T) {
+				t.Skip(pendingManagedAgents)
+			})
 		})
 	}
 }

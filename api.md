@@ -209,6 +209,76 @@ func (c *SourcesClient) Update(ctx context.Context, name string, cfg RegistrySou
 func (l *APIGroupList) HasGroup(name string) bool
 ```
 
+### AgentCustomToolInputSchema
+
+```go
+func (s AgentCustomToolInputSchema) MarshalJSON() ([]byte, error)
+func (s *AgentCustomToolInputSchema) UnmarshalJSON(data []byte) error
+```
+
+### AgentMcpServerParam
+
+```go
+func (p AgentMcpServerParam) MarshalJSON() ([]byte, error)
+```
+
+### AgentModelParam
+
+```go
+func (m AgentModelParam) IsZero() bool
+func (m AgentModelParam) MarshalJSON() ([]byte, error)
+```
+
+### AgentPermissionPolicy
+
+```go
+func (p AgentPermissionPolicy) MarshalJSON() ([]byte, error)
+func (p *AgentPermissionPolicy) UnmarshalJSON(data []byte) error
+```
+
+### AgentRosterEntry
+
+```go
+func (e AgentRosterEntry) MarshalJSON() ([]byte, error)
+func (e *AgentRosterEntry) UnmarshalJSON(data []byte) error
+```
+
+### AgentService
+
+```go
+func (s AgentService) Archive(ctx context.Context, agentID string, opts ...option.RequestOption) (*Agent, error)
+func (s AgentService) Create(ctx context.Context, params AgentNewParams, opts ...option.RequestOption) (*Agent, error)
+func (s AgentService) Get(ctx context.Context, agentID string, params AgentGetParams, opts ...option.RequestOption) (*Agent, error)
+func (s AgentService) List(ctx context.Context, params AgentListParams, opts ...option.RequestOption) (*pagination.PageCursor[Agent], error)
+func (s AgentService) Update(ctx context.Context, agentID string, params AgentUpdateParams, opts ...option.RequestOption) (*Agent, error)
+```
+
+### AgentSkillParam
+
+```go
+func (s AgentSkillParam) MarshalJSON() ([]byte, error)
+```
+
+### AgentTool
+
+```go
+func (t AgentTool) MarshalJSON() ([]byte, error)
+func (t *AgentTool) UnmarshalJSON(data []byte) error
+```
+
+### AgentToolConfig
+
+```go
+func (c AgentToolConfig) MarshalJSON() ([]byte, error)
+func (c *AgentToolConfig) UnmarshalJSON(data []byte) error
+```
+
+### AgentVersionService
+
+```go
+func (s AgentVersionService) List(ctx context.Context, agentID string, params AgentVersionListParams, opts ...option.RequestOption) (*pagination.PageCursor[Agent], error)
+```
+
 ### CloudAPIResourceService
 
 ```go
@@ -385,6 +455,10 @@ func (t *FlexibleTimestamp) UnmarshalJSON(data []byte) error
 func DecodeSSE(writer io.Writer, reader io.Reader) error
 func ListPage[T any](
 func StreamEvents[T any](
+func Model(id string) AgentModelParam
+func Coordinator(agents ...AgentRosterEntry) AgentMultiagent
+func RosterAgent(id string) AgentRosterEntry
+func RosterSelf() AgentRosterEntry
 func New(opts ...option.RequestOption) (*Client, error)
 func ConnectionConfigFromConnection(connection Connection) ConnectionConfig
 func ToConnectionList(configs []ConnectionConfig) ConnectionList
@@ -398,7 +472,20 @@ func ToConnectionList(configs []ConnectionConfig) ConnectionList
 - `APIResource`
 - `APIResourceList`
 - `APIVersions`
+- `Agent`
+- `AgentGetParams`
+- `AgentListParams`
+- `AgentModel`
+- `AgentMultiagent`
+- `AgentNewParams`
+- `AgentPermissionPolicyType`
 - `AgentProviderInfo`
+- `AgentRosterEntryType`
+- `AgentSkill`
+- `AgentSkillType`
+- `AgentToolType`
+- `AgentUpdateParams`
+- `AgentVersionListParams`
 - `AuthenticationError`
 - `BadRequestError`
 - `BatchSourceConfig`
@@ -445,7 +532,11 @@ func ToConnectionList(configs []ConnectionConfig) ConnectionList
 - `HTTPError`
 - `InternalServerError`
 - `KafkaConnectionConfig`
+- `McpServerDefinition`
 - `Message`
+- `ModelEffort`
+- `ModelEffortType`
+- `ModelSpeed`
 - `MultipartFile`
 - `MultipartRequest`
 - `NotFoundError`
