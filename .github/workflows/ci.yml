@@ -45,3 +45,81 @@ jobs:
 
       - name: Run tests
         run: ./scripts/test
+
+      # Every skip names a capability the ported test suite specifies and this
+      # SDK does not implement yet. Surfacing the count on each run makes the
+      # remaining work visible without opening the logs.
+      - name: Report outstanding surface
+        run: |
+          set -euo pipefail
+          skips="$(go test -v ./... 2>&1 | grep -c -- '--- SKIP' || true)"
+          echo "### Skipped tests: ${skips}" >> "${GITHUB_STEP_SUMMARY}"
+
+  api-docs:
+    name: API docs current
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Regenerate api.md
+        run: ./scripts/generate-api-docs
+
+      - name: Check api.md is up to date
+        run: |
+          if ! git diff --quiet -- api.md; then
+            echo "::error::api.md is stale. Run ./scripts/generate-api-docs and commit the result."
+            git diff -- api.md
+            exit 1
+          fi
+
+  detect-breaking-changes:
+    name: Detect breaking changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    if: github.event_name == 'pull_request'
+
+    steps:
+      # Full history so `git merge-base HEAD origin/main` can resolve the fork
+      # point; blob:none keeps the fetch cheap by deferring file contents until
+      # the worktree checkout asks for them.
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Compare exported API against the merge base
+        id: compare
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          base="$(git merge-base HEAD origin/main)"
+          ./scripts/detect-breaking-changes "$base"
+
+      # A deliberate break is fine; an unnoticed one is not. Acknowledge it by
+      # labelling the PR, which also makes it searchable when cutting a release.
+      - name: Require acknowledgement for breaking changes
+        if: steps.compare.outcome == 'failure'
+        run: |
+          if [ "${{ contains(github.event.pull_request.labels.*.name, 'breaking-change') }}" = "true" ]; then
+            echo "::notice::Exported API changed incompatibly; acknowledged by the breaking-change label."
+            exit 0
+          fi
+          echo "::error::Exported API changed incompatibly. Consumers such as orca-cli will fail to build."
+          echo "::error::If this is intended, add the 'breaking-change' label to this PR."
+          exit 1

@@ -1,1 +1,9 @@
 /dist
+
+# Test and coverage output
+*.out
+*.test
+coverage.txt
+
+# Local e2e scratch space (kind cluster state, checked-out chart sources)
+/.e2e

@@ -1,0 +1,3904 @@
+openapi: 3.0.1
+info:
+  title: StreamNative Cloud Extensions API
+  version: 0.0.1
+servers:
+- url: /apis/cloud.sn.io/v1
+security:
+- bearerAuth: []
+paths:
+  /:
+    get:
+      summary: Discover resources in the cloud.sn.io/v1 API group
+      operationId: getApiResources
+      responses:
+        "200":
+          description: Cloud extension resource list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CloudExtensionApiResourceList"
+  /agents/providers/{providerName}:
+    get:
+      operationId: getProvider
+      parameters:
+      - name: providerName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentProviderInfo"
+  /agents/providers:
+    get:
+      operationId: listProviders
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AgentProviderInfo"
+  /catalog/kafka/{name}:
+    get:
+      operationId: getKafkaConnectorConfigDefinition
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConfigFieldDefinition"
+  /catalog/kafka:
+    get:
+      operationId: getKafkaConnectorList
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConnectorDefinition"
+  /catalog/sinks/{name}:
+    get:
+      operationId: getSinkConfigDefinition
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConfigFieldDefinition"
+  /catalog/sinks:
+    get:
+      operationId: getSinkList
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConnectorDefinition"
+  /catalog/sources/{name}:
+    get:
+      operationId: getSourceConfigDefinition
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConfigFieldDefinition"
+  /catalog/sources:
+    get:
+      operationId: getSourceList
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConnectorDefinition"
+  /connections:
+    get:
+      operationId: listConnections
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConnectionConfig"
+    post:
+      operationId: createConnection
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectionConfig"
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /connections/{name}:
+    get:
+      operationId: getConnection
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionConfig"
+    put:
+      operationId: updateConnection
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectionConfig"
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+    delete:
+      operationId: deleteConnection
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /connections/{name}:test:
+    get:
+      operationId: testConnection
+      parameters:
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionHealthStatus"
+  /connections/validate:
+    post:
+      operationId: validateConnection
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectionConfig"
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /functions/{functionName}:
+    get:
+      operationId: getFunctionInfoWithDefaults
+      parameters:
+      - name: functionName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistryFunctionConfig"
+    put:
+      operationId: updateFunctionWithDefaults
+      parameters:
+      - name: functionName
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                data:
+                  $ref: "#/components/schemas/FormDataContentDisposition"
+                url:
+                  type: string
+                functionConfig:
+                  $ref: "#/components/schemas/RegistryFunctionConfig"
+                updateOptions:
+                  $ref: "#/components/schemas/UpdateOptions"
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+    post:
+      operationId: registerFunctionWithDefaults
+      parameters:
+      - name: functionName
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                data:
+                  $ref: "#/components/schemas/FormDataContentDisposition"
+                url:
+                  type: string
+                functionConfig:
+                  $ref: "#/components/schemas/RegistryFunctionConfig"
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+    delete:
+      operationId: deregisterFunctionWithDefaults
+      parameters:
+      - name: functionName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /functions/{functionName}/{instanceId}/stats:
+    get:
+      operationId: getFunctionInstanceStatsWithDefaults
+      parameters:
+      - name: functionName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FunctionInstanceStatsDataImpl"
+  /functions/{functionName}/{instanceId}/status:
+    get:
+      operationId: getFunctionInstanceStatusWithDefaults
+      parameters:
+      - name: functionName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FunctionInstanceStatusData"
+  /functions/{functionName}/state/{key}:
+    get:
+      operationId: getFunctionStateWithDefaults
+      parameters:
+      - name: functionName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FunctionState"
+    post:
+      operationId: putFunctionStateWithDefaults
+      parameters:
+      - name: functionName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: key
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                state:
+                  $ref: "#/components/schemas/FunctionState"
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /functions/{functionName}/stats:
+    get:
+      operationId: getFunctionStatsWithDefaults
+      parameters:
+      - name: functionName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FunctionStatsImpl"
+  /functions/{functionName}/status:
+    get:
+      operationId: getFunctionStatusWithDefaults
+      parameters:
+      - name: functionName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FunctionStatus"
+  /functions:
+    get:
+      operationId: listFunctionsWithDefaults
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+  /functions/{functionName}:restart:
+    post:
+      operationId: restartFunctionAllWithDefaults
+      parameters:
+      - name: functionName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /functions/{functionName}/{instanceId}:restart:
+    post:
+      operationId: restartFunctionWithDefaults
+      parameters:
+      - name: functionName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /functions/{functionName}:start:
+    post:
+      operationId: startFunctionAllWithDefaults
+      parameters:
+      - name: functionName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /functions/{functionName}/{instanceId}:start:
+    post:
+      operationId: startFunctionWithDefaults
+      parameters:
+      - name: functionName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /functions/{functionName}:stop:
+    post:
+      operationId: stopFunctionAllWithDefaults
+      parameters:
+      - name: functionName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /functions/{functionName}/{instanceId}:stop:
+    post:
+      operationId: stopFunctionWithDefaults
+      parameters:
+      - name: functionName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /functions/{functionName}:trigger:
+    post:
+      operationId: triggerFunctionWithDefaults
+      parameters:
+      - name: functionName
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: string
+                dataStream:
+                  type: object
+                topic:
+                  type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                type: string
+  /health:
+    get:
+      operationId: health
+      responses:
+        default:
+          description: default response
+          content:
+            '*/*':
+              schema:
+                type: boolean
+  /health/ready:
+    get:
+      operationId: isInitialized
+      responses:
+        default:
+          description: default response
+          content:
+            '*/*':
+              schema:
+                type: boolean
+  /health/live:
+    get:
+      operationId: liveness
+      responses:
+        default:
+          description: default response
+          content:
+            '*/*':
+              schema:
+                type: boolean
+  /packages/{type}/{packageName}/{version}:
+    get:
+      operationId: download
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: packageName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+    post:
+      operationId: upload
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: packageName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                metadata:
+                  $ref: "#/components/schemas/PackageMetadata"
+                file:
+                  type: object
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+    delete:
+      operationId: delete
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: packageName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /packages/{type}/{packageName}/{version}/metadata:
+    get:
+      operationId: getMeta
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: packageName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+    put:
+      operationId: updateMeta
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: packageName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: version
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PackageMetadata"
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /packages/{type}/{packageName}:
+    get:
+      operationId: listPackageVersion
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: packageName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /packages/{type}:
+    get:
+      operationId: listPackages
+      parameters:
+      - name: type
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /connectors/sinks/{sinkName}:
+    get:
+      operationId: getSinkInfoWithDefaults
+      parameters:
+      - name: sinkName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistrySinkConfig"
+    put:
+      operationId: updateSinkWithDefaults
+      parameters:
+      - name: sinkName
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                data:
+                  $ref: "#/components/schemas/FormDataContentDisposition"
+                url:
+                  type: string
+                sinkConfig:
+                  $ref: "#/components/schemas/RegistrySinkConfig"
+                updateOptions:
+                  $ref: "#/components/schemas/UpdateOptions"
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+    post:
+      operationId: registerSinkWithDefaults
+      parameters:
+      - name: sinkName
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                data:
+                  $ref: "#/components/schemas/FormDataContentDisposition"
+                url:
+                  type: string
+                sinkConfig:
+                  $ref: "#/components/schemas/RegistrySinkConfig"
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+    delete:
+      operationId: deregisterSinkWithDefaults
+      parameters:
+      - name: sinkName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /connectors/sinks/{sinkName}/{instanceId}/status:
+    get:
+      operationId: getSinkInstanceStatusWithDefaults
+      parameters:
+      - name: sinkName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SinkInstanceStatusData"
+  /connectors/sinks/{sinkName}/status:
+    get:
+      operationId: getSinkStatusWithDefaults
+      parameters:
+      - name: sinkName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SinkStatus"
+  /connectors/sinks:
+    get:
+      operationId: listSinkWithDefaults
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+  /connectors/sinks/{sinkName}:restart:
+    post:
+      operationId: restartSinkAllWithDefaults
+      parameters:
+      - name: sinkName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /connectors/sinks/{sinkName}/{instanceId}:restart:
+    post:
+      operationId: restartSinkWithDefaults
+      parameters:
+      - name: sinkName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /connectors/sinks/{sinkName}:start:
+    post:
+      operationId: startSinkAllWithDefaults
+      parameters:
+      - name: sinkName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /connectors/sinks/{sinkName}/{instanceId}:start:
+    post:
+      operationId: startSinkWithDefaults
+      parameters:
+      - name: sinkName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /connectors/sinks/{sinkName}:stop:
+    post:
+      operationId: stopSinkAllWithDefaults
+      parameters:
+      - name: sinkName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /connectors/sinks/{sinkName}/{instanceId}:stop:
+    post:
+      operationId: stopSinkWithDefaults
+      parameters:
+      - name: sinkName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /connectors/sources/{sourceName}:
+    get:
+      operationId: getSourceInfoWithDefaults
+      parameters:
+      - name: sourceName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RegistrySourceConfig"
+    put:
+      operationId: updateSourceWithDefaults
+      parameters:
+      - name: sourceName
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                data:
+                  $ref: "#/components/schemas/FormDataContentDisposition"
+                url:
+                  type: string
+                sourceConfig:
+                  $ref: "#/components/schemas/RegistrySourceConfig"
+                updateOptions:
+                  $ref: "#/components/schemas/UpdateOptions"
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+    post:
+      operationId: registerSourceWithDefaults
+      parameters:
+      - name: sourceName
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                data:
+                  $ref: "#/components/schemas/FormDataContentDisposition"
+                url:
+                  type: string
+                sourceConfig:
+                  $ref: "#/components/schemas/RegistrySourceConfig"
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+    delete:
+      operationId: deregisterSourceWithDefaults
+      parameters:
+      - name: sourceName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /connectors/sources/{sourceName}/{instanceId}/status:
+    get:
+      operationId: getSourceInstanceStatusWithDefaults
+      parameters:
+      - name: sourceName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceInstanceStatusData"
+  /connectors/sources/{sourceName}/status:
+    get:
+      operationId: getSourceStatusWithDefaults
+      parameters:
+      - name: sourceName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceStatus"
+  /connectors/sources:
+    get:
+      operationId: listSourcesWithDefaults
+      responses:
+        default:
+          description: default response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+  /connectors/sources/{sourceName}:restart:
+    post:
+      operationId: restartSourceAllWithDefaults
+      parameters:
+      - name: sourceName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /connectors/sources/{sourceName}/{instanceId}:restart:
+    post:
+      operationId: restartSourceWithDefaults
+      parameters:
+      - name: sourceName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /connectors/sources/{sourceName}:start:
+    post:
+      operationId: startSourceAllWithDefaults
+      parameters:
+      - name: sourceName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /connectors/sources/{sourceName}/{instanceId}:start:
+    post:
+      operationId: startSourceWithDefaults
+      parameters:
+      - name: sourceName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /connectors/sources/{sourceName}:stop:
+    post:
+      operationId: stopSourceAllWithDefaults
+      parameters:
+      - name: sourceName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /connectors/sources/{sourceName}/{instanceId}:stop:
+    post:
+      operationId: stopSourceWithDefaults
+      parameters:
+      - name: sourceName
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: instanceId
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        default:
+          description: default response
+          content:
+            application/json: {}
+  /connectors/kafka/connector-plugins/{pluginName}/config:
+    get:
+      summary: Get the configuration definition for the specified pluginName
+      operationId: getConnectorConfigDef
+      parameters:
+      - name: pluginName
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Connector configuration definition
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ConfigKeyInfo"
+        "404":
+          description: Connector plugin not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+  /connectors/kafka/connector-plugins:
+    get:
+      summary: List all connector plugins installed
+      operationId: listConnectorPlugins
+      parameters:
+      - name: connectorsOnly
+        in: query
+        description: Whether to list only connectors instead of all plugins
+        schema:
+          type: boolean
+          default: true
+      responses:
+        "200":
+          description: Connector plugins
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PluginInfo"
+        "4XX":
+          description: Client error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "5XX":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+  /connectors/kafka/connector-plugins/catalog:
+    get:
+      summary: List all connector catalog
+      operationId: listConnectorPluginsCatalog
+      responses:
+        "200":
+          description: Connector catalog
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FunctionMeshConnectorDefinition"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+  /connectors/kafka/connector-plugins/{pluginName}/config/validate:
+    put:
+      summary: Validate the provided configuration against the configuration definition
+        for the specified pluginName
+      operationId: validateConfigs
+      parameters:
+      - name: pluginName
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+      responses:
+        "400":
+          description: Validation endpoint is not supported
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+  /connectors/kafka/health:
+    get:
+      summary: Health check endpoint to verify worker readiness and liveness
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Worker is healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkerStatus"
+        "500":
+          description: Worker is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkerStatus"
+        "503":
+          description: Worker is starting
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkerStatus"
+  /connectors/kafka:
+    get:
+      operationId: serverInfo
+      responses:
+        "200":
+          description: Connect worker details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerInfo"
+  /connectors/kafka/connectors/{connector}/offsets:
+    get:
+      summary: Get the current offsets for the specified connector
+      operationId: getOffsets
+      parameters:
+      - name: connector
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Connector offsets
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorOffsets"
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "404":
+          description: Connector not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+    delete:
+      summary: Reset the offsets for the specified connector
+      operationId: resetConnectorOffsets
+      parameters:
+      - name: connector
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Offsets reset successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          description: Invalid offsets request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "404":
+          description: Connector not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+    patch:
+      summary: Alter the offsets for the specified connector
+      operationId: alterConnectorOffsets
+      parameters:
+      - name: connector
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConnectorOffsets"
+      responses:
+        "200":
+          description: Offsets altered successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Message"
+        "400":
+          description: Invalid offsets request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "404":
+          description: Connector not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+  /connectors/kafka/connectors:
+    get:
+      summary: List all active connectors
+      operationId: listConnectors
+      responses:
+        "200":
+          description: Active connectors
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+    post:
+      summary: Create a new connector
+      operationId: createConnector
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateConnectorRequest"
+      responses:
+        "201":
+          description: Connector created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorInfo"
+        "400":
+          description: Invalid connector configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "409":
+          description: Request conflicts with current connector state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+  /connectors/kafka/connectors/{connector}:
+    get:
+      summary: Get the details for the specified connector
+      operationId: getConnector
+      parameters:
+      - name: connector
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Connector details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorInfo"
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "404":
+          description: Connector not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+    delete:
+      summary: Delete the specified connector
+      operationId: destroyConnector
+      parameters:
+      - name: connector
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "204":
+          description: Connector deleted successfully
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "404":
+          description: Connector not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+  /connectors/kafka/connectors/{connector}/topics:
+    get:
+      summary: Get the list of topics actively used by the specified connector
+      operationId: getConnectorActiveTopics
+      parameters:
+      - name: connector
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Connector active topics
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "404":
+          description: Connector not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+  /connectors/kafka/connectors/{connector}/config:
+    get:
+      summary: Get the configuration for the specified connector
+      operationId: getConnectorConfig
+      parameters:
+      - name: connector
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Connector configuration
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "404":
+          description: Connector not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+    put:
+      summary: Create or reconfigure the specified connector
+      operationId: putConnectorConfig
+      parameters:
+      - name: connector
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+      responses:
+        "200":
+          description: Connector updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorInfo"
+        "201":
+          description: Connector created successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorInfo"
+        "400":
+          description: Invalid connector configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "404":
+          description: Connector not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "409":
+          description: Request conflicts with current connector state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+  /connectors/kafka/connectors/{connector}/status:
+    get:
+      summary: Get the status for the specified connector
+      operationId: getConnectorStatus
+      parameters:
+      - name: connector
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Connector status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorStateInfo"
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "404":
+          description: Connector not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+  /connectors/kafka/connectors/{connector}/tasks:
+    get:
+      summary: List all tasks and their configurations for the specified connector
+      operationId: getTaskConfigs
+      parameters:
+      - name: connector
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Task configurations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TaskInfo"
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "404":
+          description: Connector not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+  /connectors/kafka/connectors/{connector}/tasks/{task}/status:
+    get:
+      summary: Get the state of the specified task for the specified connector
+      operationId: getTaskStatus
+      parameters:
+      - name: connector
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: task
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "200":
+          description: Task status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskState"
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "404":
+          description: Connector or task not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+  /connectors/kafka/connectors/{connector}/tasks-config:
+    get:
+      summary: Get the configuration of all tasks for the specified connector
+      operationId: getTasksConfig
+      parameters:
+      - name: connector
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "200":
+          description: Task configurations
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "404":
+          description: Connector not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+      deprecated: true
+  /connectors/kafka/connectors/{connector}:pause:
+    put:
+      summary: Pause the specified connector
+      description: This operation is idempotent and has no effects if the connector
+        is already paused
+      operationId: pauseConnector
+      parameters:
+      - name: connector
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "202":
+          description: Pause request accepted
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "404":
+          description: Connector not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+  /connectors/kafka/connectors/{connector}/topics:reset:
+    put:
+      summary: Reset the list of topics actively used by the specified connector
+      operationId: resetConnectorActiveTopics
+      parameters:
+      - name: connector
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "202":
+          description: Active topics reset request accepted
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "404":
+          description: Connector not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+  /connectors/kafka/connectors/{connector}:restart:
+    post:
+      summary: Restart the specified connector
+      operationId: restartConnector
+      parameters:
+      - name: connector
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: includeTasks
+        in: query
+        description: Whether to also restart tasks
+        schema:
+          type: boolean
+          default: false
+      - name: onlyFailed
+        in: query
+        description: Whether to only restart failed tasks/connectors
+        schema:
+          type: boolean
+          default: false
+      responses:
+        "202":
+          description: Restart request accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectorStateInfo"
+        "204":
+          description: Connector restarted without task payload
+        "400":
+          description: Invalid restart request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "404":
+          description: Connector not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "409":
+          description: Request conflicts with current connector state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+  /connectors/kafka/connectors/{connector}/tasks/{task}/restart:
+    post:
+      summary: Restart the specified task for the specified connector
+      operationId: restartTask
+      parameters:
+      - name: connector
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: task
+        in: path
+        required: true
+        schema:
+          type: integer
+          format: int32
+      responses:
+        "204":
+          description: Task restarted successfully
+        "400":
+          description: Invalid restart request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "404":
+          description: Connector or task not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+  /connectors/kafka/connectors/{connector}:resume:
+    put:
+      summary: Resume the specified connector
+      description: This operation is idempotent and has no effects if the connector
+        is already running
+      operationId: resumeConnector
+      parameters:
+      - name: connector
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "202":
+          description: Resume request accepted
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "404":
+          description: Connector not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+  /connectors/kafka/connectors/{connector}:stop:
+    put:
+      summary: Stop the specified connector
+      description: This operation is idempotent and has no effects if the connector
+        is already stopped
+      operationId: stopConnector
+      parameters:
+      - name: connector
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        "202":
+          description: Stop request accepted
+        "403":
+          description: The requester doesn't have permission to perform this operation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "404":
+          description: Connector not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+        "500":
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorMessage"
+components:
+  schemas:
+    CloudExtensionApiResource:
+      required:
+      - kind
+      - name
+      - namespaced
+      type: object
+      properties:
+        name:
+          type: string
+        namespaced:
+          type: boolean
+        kind:
+          type: string
+    CloudExtensionApiResourceList:
+      required:
+      - group_version
+      - kind
+      - resources
+      type: object
+      properties:
+        kind:
+          type: string
+          enum:
+          - APIResourceList
+        group_version:
+          type: string
+        resources:
+          type: array
+          items:
+            $ref: "#/components/schemas/CloudExtensionApiResource"
+    AgentProviderInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        api_url:
+          type: string
+        api_version:
+          type: string
+        beta_version:
+          type: string
+        api_key_env:
+          type: string
+        api_key_configured:
+          type: boolean
+    ConfigFieldDefinition:
+      type: object
+      properties:
+        fieldName:
+          type: string
+        typeName:
+          type: string
+        attributes:
+          type: object
+          additionalProperties:
+            type: string
+    ConnectorDefinition:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        sourceClass:
+          type: string
+        sinkClass:
+          type: string
+        sourceConfigClass:
+          type: string
+        sinkConfigClass:
+          type: string
+    ConnectionConfig:
+      type: object
+      properties:
+        name:
+          type: string
+        spec:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpec"
+        status:
+          $ref: "#/components/schemas/V1alpha1ConnectionStatus"
+        internal:
+          type: boolean
+        clusterRef:
+          type: string
+    V1alpha1ConnectionSpec:
+      type: object
+      properties:
+        kafka:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecKafka"
+        other:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecOther"
+        pulsar:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecPulsar"
+        type:
+          type: string
+          enum:
+          - pulsar
+          - kafka
+          - other
+    V1alpha1ConnectionSpecKafka:
+      type: object
+      properties:
+        authentication:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecKafkaAuthentication"
+        bootstrapServers:
+          type: string
+        tls:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecKafkaTls"
+      nullable: true
+    V1alpha1ConnectionSpecKafkaAuthentication:
+      type: object
+      properties:
+        genericAuth:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecKafkaAuthenticationGenericAuth"
+        oauth2Config:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecKafkaAuthenticationOauth2Config"
+        plainAuthConfig:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecKafkaAuthenticationPlainAuthConfig"
+        scramAuthConfig:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecKafkaAuthenticationScramAuthConfig"
+      nullable: true
+    V1alpha1ConnectionSpecKafkaAuthenticationGenericAuth:
+      type: object
+      properties:
+        clientAuthenticationParameters:
+          type: string
+        clientAuthenticationPlugin:
+          type: string
+      nullable: true
+    V1alpha1ConnectionSpecKafkaAuthenticationOauth2Config:
+      type: object
+      properties:
+        audience:
+          type: string
+        issuerUrl:
+          type: string
+        keySecretKey:
+          type: string
+        keySecretName:
+          type: string
+        scope:
+          type: string
+          nullable: true
+      nullable: true
+    V1alpha1ConnectionSpecKafkaAuthenticationPlainAuthConfig:
+      type: object
+      properties:
+        passwordKey:
+          type: string
+          nullable: true
+        secretName:
+          type: string
+        usernameKey:
+          type: string
+          nullable: true
+      nullable: true
+    V1alpha1ConnectionSpecKafkaAuthenticationScramAuthConfig:
+      type: object
+      properties:
+        hashAlgorithm:
+          type: string
+          nullable: true
+          enum:
+          - SHA-256
+          - SHA-512
+        passwordKey:
+          type: string
+          nullable: true
+        secretName:
+          type: string
+        usernameKey:
+          type: string
+          nullable: true
+      nullable: true
+    V1alpha1ConnectionSpecKafkaTls:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+          nullable: true
+        keyStoreConfig:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecKafkaTlsKeyStoreConfig"
+        trustStoreConfig:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecKafkaTlsTrustStoreConfig"
+      nullable: true
+    V1alpha1ConnectionSpecKafkaTlsKeyStoreConfig:
+      type: object
+      properties:
+        fileKey:
+          type: string
+          nullable: true
+        keyPasswordKey:
+          type: string
+          nullable: true
+        passwordKey:
+          type: string
+          nullable: true
+        secretName:
+          type: string
+          nullable: true
+        type:
+          type: string
+          nullable: true
+          enum:
+          - JKS
+          - PEM
+          - PKCS12
+      nullable: true
+    V1alpha1ConnectionSpecKafkaTlsTrustStoreConfig:
+      type: object
+      properties:
+        fileKey:
+          type: string
+          nullable: true
+        passwordKey:
+          type: string
+          nullable: true
+        secretName:
+          type: string
+          nullable: true
+        type:
+          type: string
+          nullable: true
+          enum:
+          - JKS
+          - PEM
+          - PKCS12
+      nullable: true
+    V1alpha1ConnectionSpecOther:
+      type: object
+      properties:
+        endpoint:
+          type: string
+        properties:
+          type: object
+          additionalProperties:
+            type: string
+          nullable: true
+        secretRef:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecOtherSecretRef"
+      nullable: true
+    V1alpha1ConnectionSpecOtherSecretRef:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+      nullable: true
+    V1alpha1ConnectionSpecPulsar:
+      type: object
+      properties:
+        adminUrl:
+          type: string
+          nullable: true
+        authentication:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecPulsarAuthentication"
+        serviceUrl:
+          type: string
+        tls:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecPulsarTls"
+      nullable: true
+    V1alpha1ConnectionSpecPulsarAuthentication:
+      type: object
+      properties:
+        genericAuth:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecPulsarAuthenticationGenericAuth"
+        oauth2:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecPulsarAuthenticationOauth2"
+        token:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecPulsarAuthenticationToken"
+      nullable: true
+    V1alpha1ConnectionSpecPulsarAuthenticationGenericAuth:
+      type: object
+      properties:
+        clientAuthenticationParameters:
+          type: string
+        clientAuthenticationPlugin:
+          type: string
+      nullable: true
+    V1alpha1ConnectionSpecPulsarAuthenticationOauth2:
+      type: object
+      properties:
+        audience:
+          type: string
+        issuerUrl:
+          type: string
+        keySecretKey:
+          type: string
+        keySecretName:
+          type: string
+        scope:
+          type: string
+          nullable: true
+      nullable: true
+    V1alpha1ConnectionSpecPulsarAuthenticationToken:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+      nullable: true
+    V1alpha1ConnectionSpecPulsarTls:
+      type: object
+      properties:
+        allowInsecureConnection:
+          type: boolean
+          nullable: true
+        clientCertSecretRef:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecPulsarTlsClientCertSecretRef"
+        clientKeySecretRef:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecPulsarTlsClientKeySecretRef"
+        enableHostnameVerification:
+          type: boolean
+          nullable: true
+        enabled:
+          type: boolean
+          nullable: true
+        trustCertsSecretRef:
+          $ref: "#/components/schemas/V1alpha1ConnectionSpecPulsarTlsTrustCertsSecretRef"
+      nullable: true
+    V1alpha1ConnectionSpecPulsarTlsClientCertSecretRef:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+      nullable: true
+    V1alpha1ConnectionSpecPulsarTlsClientKeySecretRef:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+      nullable: true
+    V1alpha1ConnectionSpecPulsarTlsTrustCertsSecretRef:
+      type: object
+      properties:
+        key:
+          type: string
+        name:
+          type: string
+      nullable: true
+    V1alpha1ConnectionStatus:
+      type: object
+      properties:
+        conditions:
+          type: array
+          nullable: true
+          items:
+            $ref: "#/components/schemas/V1alpha1ConnectionStatusConditions"
+        lastTestedAt:
+          type: string
+          format: date-time
+          nullable: true
+        message:
+          type: string
+          nullable: true
+        observedGeneration:
+          type: integer
+          format: int64
+          nullable: true
+        phase:
+          type: string
+          nullable: true
+          enum:
+          - Unknown
+          - Healthy
+          - Unhealthy
+          - Testing
+    V1alpha1ConnectionStatusConditions:
+      type: object
+      properties:
+        lastTransitionTime:
+          type: string
+          format: date-time
+        message:
+          type: string
+        observedGeneration:
+          type: integer
+          format: int64
+          nullable: true
+        reason:
+          type: string
+        status:
+          type: string
+          enum:
+          - "True"
+          - "False"
+          - Unknown
+        type:
+          type: string
+    ConnectionHealthStatus:
+      type: object
+      properties:
+        name:
+          type: string
+        phase:
+          type: string
+        healthy:
+          type: boolean
+        message:
+          type: string
+        lastTestedAt:
+          type: string
+    BatchingConfig:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        batchingMaxPublishDelayMs:
+          type: integer
+          format: int32
+        roundRobinRouterBatchingPartitionSwitchFrequency:
+          type: integer
+          format: int32
+        batchingMaxMessages:
+          type: integer
+          format: int32
+        batchingMaxBytes:
+          type: integer
+          format: int32
+        batchBuilder:
+          type: string
+    ConsumerConfig:
+      type: object
+      properties:
+        schemaType:
+          type: string
+        serdeClassName:
+          type: string
+        schemaProperties:
+          type: object
+          additionalProperties:
+            type: string
+        consumerProperties:
+          type: object
+          additionalProperties:
+            type: string
+        receiverQueueSize:
+          type: integer
+          format: int32
+        cryptoConfig:
+          $ref: "#/components/schemas/CryptoConfig"
+        messagePayloadProcessorConfig:
+          $ref: "#/components/schemas/MessagePayloadProcessorConfig"
+        poolMessages:
+          type: boolean
+        regexPattern:
+          type: boolean
+    CryptoConfig:
+      type: object
+      properties:
+        cryptoKeyReaderClassName:
+          type: string
+        cryptoKeyReaderConfig:
+          type: object
+          additionalProperties:
+            type: object
+        encryptionKeys:
+          type: array
+          items:
+            type: string
+        producerCryptoFailureAction:
+          type: string
+          enum:
+          - FAIL
+          - SEND
+        consumerCryptoFailureAction:
+          type: string
+          enum:
+          - FAIL
+          - DISCARD
+          - CONSUME
+    FunctionConfig:
+      type: object
+      properties:
+        runtimeFlags:
+          type: string
+        tenant:
+          type: string
+        namespace:
+          type: string
+        name:
+          type: string
+        className:
+          type: string
+        inputs:
+          type: array
+          items:
+            type: string
+        customSerdeInputs:
+          type: object
+          additionalProperties:
+            type: string
+        topicsPattern:
+          type: string
+        customSchemaInputs:
+          type: object
+          additionalProperties:
+            type: string
+        customSchemaOutputs:
+          type: object
+          additionalProperties:
+            type: string
+        inputSpecs:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ConsumerConfig"
+        inputTypeClassName:
+          type: string
+        output:
+          type: string
+        producerConfig:
+          $ref: "#/components/schemas/ProducerConfig"
+        outputSchemaType:
+          type: string
+        outputTypeClassName:
+          type: string
+        outputSerdeClassName:
+          type: string
+        logTopic:
+          type: string
+        processingGuarantees:
+          type: string
+          enum:
+          - ATLEAST_ONCE
+          - ATMOST_ONCE
+          - EFFECTIVELY_ONCE
+          - MANUAL
+        retainOrdering:
+          type: boolean
+        retainKeyOrdering:
+          type: boolean
+        batchBuilder:
+          type: string
+        forwardSourceMessageProperty:
+          type: boolean
+        userConfig:
+          type: object
+          additionalProperties:
+            type: object
+        secrets:
+          type: object
+          additionalProperties:
+            type: object
+        runtime:
+          type: string
+          enum:
+          - JAVA
+          - PYTHON
+          - GO
+        autoAck:
+          type: boolean
+        maxMessageRetries:
+          type: integer
+          format: int32
+        deadLetterTopic:
+          type: string
+        subName:
+          type: string
+        parallelism:
+          type: integer
+          format: int32
+        resources:
+          $ref: "#/components/schemas/Resources"
+        fqfn:
+          type: string
+        windowConfig:
+          $ref: "#/components/schemas/WindowConfig"
+        timeoutMs:
+          type: integer
+          format: int64
+        jar:
+          type: string
+        py:
+          type: string
+        go:
+          type: string
+        functionType:
+          type: string
+        cleanupSubscription:
+          type: boolean
+        customRuntimeOptions:
+          type: string
+        maxPendingAsyncRequests:
+          type: integer
+          format: int32
+        exposePulsarAdminClientEnabled:
+          type: boolean
+        skipToLatest:
+          type: boolean
+        subscriptionPosition:
+          type: string
+          enum:
+          - Latest
+          - Earliest
+    MessagePayloadProcessorConfig:
+      type: object
+      properties:
+        className:
+          type: string
+        config:
+          type: object
+          additionalProperties:
+            type: object
+    ProducerConfig:
+      type: object
+      properties:
+        maxPendingMessages:
+          type: integer
+          format: int32
+        maxPendingMessagesAcrossPartitions:
+          type: integer
+          format: int32
+        useThreadLocalProducers:
+          type: boolean
+        cryptoConfig:
+          $ref: "#/components/schemas/CryptoConfig"
+        batchBuilder:
+          type: string
+        compressionType:
+          type: string
+          enum:
+          - NONE
+          - LZ4
+          - ZLIB
+          - ZSTD
+          - SNAPPY
+        batchingConfig:
+          $ref: "#/components/schemas/BatchingConfig"
+    RegistryFunctionConfig:
+      type: object
+      properties:
+        runtimeFlags:
+          type: string
+        tenant:
+          type: string
+        namespace:
+          type: string
+        name:
+          type: string
+        className:
+          type: string
+        inputs:
+          type: array
+          items:
+            type: string
+        customSerdeInputs:
+          type: object
+          additionalProperties:
+            type: string
+        topicsPattern:
+          type: string
+        customSchemaInputs:
+          type: object
+          additionalProperties:
+            type: string
+        customSchemaOutputs:
+          type: object
+          additionalProperties:
+            type: string
+        inputSpecs:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ConsumerConfig"
+        inputTypeClassName:
+          type: string
+        output:
+          type: string
+        producerConfig:
+          $ref: "#/components/schemas/ProducerConfig"
+        outputSchemaType:
+          type: string
+        outputTypeClassName:
+          type: string
+        outputSerdeClassName:
+          type: string
+        logTopic:
+          type: string
+        processingGuarantees:
+          type: string
+          enum:
+          - ATLEAST_ONCE
+          - ATMOST_ONCE
+          - EFFECTIVELY_ONCE
+          - MANUAL
+        retainOrdering:
+          type: boolean
+        retainKeyOrdering:
+          type: boolean
+        batchBuilder:
+          type: string
+        forwardSourceMessageProperty:
+          type: boolean
+        userConfig:
+          type: object
+          additionalProperties:
+            type: object
+        secrets:
+          type: object
+          additionalProperties:
+            type: object
+        runtime:
+          type: string
+          enum:
+          - JAVA
+          - PYTHON
+          - GO
+        autoAck:
+          type: boolean
+        maxMessageRetries:
+          type: integer
+          format: int32
+        deadLetterTopic:
+          type: string
+        subName:
+          type: string
+        parallelism:
+          type: integer
+          format: int32
+        resources:
+          $ref: "#/components/schemas/Resources"
+        fqfn:
+          type: string
+        windowConfig:
+          $ref: "#/components/schemas/WindowConfig"
+        timeoutMs:
+          type: integer
+          format: int64
+        jar:
+          type: string
+        py:
+          type: string
+        go:
+          type: string
+        functionType:
+          type: string
+        cleanupSubscription:
+          type: boolean
+        customRuntimeOptions:
+          type: string
+        maxPendingAsyncRequests:
+          type: integer
+          format: int32
+        exposePulsarAdminClientEnabled:
+          type: boolean
+        skipToLatest:
+          type: boolean
+        subscriptionPosition:
+          type: string
+          enum:
+          - Latest
+          - Earliest
+        connection:
+          type: string
+        snServiceAccount:
+          type: string
+    Resources:
+      type: object
+      properties:
+        cpu:
+          type: number
+          format: double
+        ram:
+          type: integer
+          format: int64
+        disk:
+          type: integer
+          format: int64
+    WindowConfig:
+      type: object
+      properties:
+        windowLengthCount:
+          type: integer
+          format: int32
+        windowLengthDurationMs:
+          type: integer
+          format: int64
+        slidingIntervalCount:
+          type: integer
+          format: int32
+        slidingIntervalDurationMs:
+          type: integer
+          format: int64
+        lateDataTopic:
+          type: string
+        maxLagMs:
+          type: integer
+          format: int64
+        watermarkEmitIntervalMs:
+          type: integer
+          format: int64
+        timestampExtractorClassName:
+          type: string
+        actualWindowFunctionClassName:
+          type: string
+        processingGuarantees:
+          type: string
+          enum:
+          - ATLEAST_ONCE
+          - ATMOST_ONCE
+    FunctionInstanceStatsDataBaseImpl:
+      type: object
+      properties:
+        receivedTotal:
+          type: integer
+          format: int64
+        processedSuccessfullyTotal:
+          type: integer
+          format: int64
+        systemExceptionsTotal:
+          type: integer
+          format: int64
+        userExceptionsTotal:
+          type: integer
+          format: int64
+        avgProcessLatency:
+          type: number
+          format: double
+    FunctionInstanceStatsDataImpl:
+      type: object
+      properties:
+        receivedTotal:
+          type: integer
+          format: int64
+        processedSuccessfullyTotal:
+          type: integer
+          format: int64
+        systemExceptionsTotal:
+          type: integer
+          format: int64
+        userExceptionsTotal:
+          type: integer
+          format: int64
+        avgProcessLatency:
+          type: number
+          format: double
+        "1min":
+          $ref: "#/components/schemas/FunctionInstanceStatsDataBaseImpl"
+        lastInvocation:
+          type: integer
+          format: int64
+        userMetrics:
+          type: object
+          additionalProperties:
+            type: number
+            format: double
+    ExceptionInformation:
+      type: object
+      properties:
+        exceptionString:
+          type: string
+        timestampMs:
+          type: integer
+          format: int64
+    FunctionInstanceStatusData:
+      type: object
+      properties:
+        running:
+          type: boolean
+        error:
+          type: string
+        numRestarts:
+          type: integer
+          format: int64
+        numReceived:
+          type: integer
+          format: int64
+        numSuccessfullyProcessed:
+          type: integer
+          format: int64
+        numUserExceptions:
+          type: integer
+          format: int64
+        latestUserExceptions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExceptionInformation"
+        numSystemExceptions:
+          type: integer
+          format: int64
+        latestSystemExceptions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExceptionInformation"
+        averageLatency:
+          type: number
+          format: double
+        lastInvocationTime:
+          type: integer
+          format: int64
+        workerId:
+          type: string
+    FunctionState:
+      type: object
+      properties:
+        key:
+          type: string
+        stringValue:
+          type: string
+        byteValue:
+          type: string
+          format: byte
+        numberValue:
+          type: integer
+          format: int64
+        version:
+          type: integer
+          format: int64
+    FunctionInstanceStatsData:
+      type: object
+      properties:
+        lastInvocation:
+          type: integer
+          format: int64
+        oneMin:
+          $ref: "#/components/schemas/FunctionInstanceStatsDataBase"
+        userMetrics:
+          type: object
+          additionalProperties:
+            type: number
+            format: double
+        processedSuccessfullyTotal:
+          type: integer
+          format: int64
+        receivedTotal:
+          type: integer
+          format: int64
+        systemExceptionsTotal:
+          type: integer
+          format: int64
+        userExceptionsTotal:
+          type: integer
+          format: int64
+        avgProcessLatency:
+          type: number
+          format: double
+    FunctionInstanceStatsDataBase:
+      type: object
+      properties:
+        processedSuccessfullyTotal:
+          type: integer
+          format: int64
+        receivedTotal:
+          type: integer
+          format: int64
+        systemExceptionsTotal:
+          type: integer
+          format: int64
+        userExceptionsTotal:
+          type: integer
+          format: int64
+        avgProcessLatency:
+          type: number
+          format: double
+    FunctionInstanceStatsImpl:
+      type: object
+      properties:
+        instanceId:
+          type: integer
+          format: int32
+        metrics:
+          $ref: "#/components/schemas/FunctionInstanceStatsData"
+    FunctionStatsImpl:
+      type: object
+      properties:
+        receivedTotal:
+          type: integer
+          format: int64
+        processedSuccessfullyTotal:
+          type: integer
+          format: int64
+        systemExceptionsTotal:
+          type: integer
+          format: int64
+        userExceptionsTotal:
+          type: integer
+          format: int64
+        avgProcessLatency:
+          type: number
+          format: double
+        "1min":
+          $ref: "#/components/schemas/FunctionInstanceStatsDataBaseImpl"
+        lastInvocation:
+          type: integer
+          format: int64
+        instances:
+          type: array
+          items:
+            $ref: "#/components/schemas/FunctionInstanceStatsImpl"
+    FunctionInstanceStatus:
+      type: object
+      properties:
+        instanceId:
+          type: integer
+          format: int32
+        status:
+          $ref: "#/components/schemas/FunctionInstanceStatusData"
+    FunctionStatus:
+      type: object
+      properties:
+        numInstances:
+          type: integer
+          format: int32
+        numRunning:
+          type: integer
+          format: int32
+        instances:
+          type: array
+          items:
+            $ref: "#/components/schemas/FunctionInstanceStatus"
+    FormDataContentDisposition:
+      type: object
+      properties:
+        type:
+          type: string
+        parameters:
+          type: object
+          additionalProperties:
+            type: string
+        fileName:
+          type: string
+        creationDate:
+          type: string
+          format: date-time
+        modificationDate:
+          type: string
+          format: date-time
+        readDate:
+          type: string
+          format: date-time
+        size:
+          type: integer
+          format: int64
+        name:
+          type: string
+    UpdateOptions:
+      type: object
+      properties:
+        update-auth-data:
+          type: boolean
+          description: Whether or not to update the auth data
+      description: Options while updating the sink
+    PackageMetadata:
+      type: object
+      properties:
+        description:
+          type: string
+        contact:
+          type: string
+        createTime:
+          type: integer
+          format: int64
+        modificationTime:
+          type: integer
+          format: int64
+        properties:
+          type: object
+          additionalProperties:
+            type: string
+    RegistrySinkConfig:
+      type: object
+      properties:
+        tenant:
+          type: string
+        namespace:
+          type: string
+        name:
+          type: string
+        className:
+          type: string
+        sourceSubscriptionName:
+          type: string
+        sourceSubscriptionPosition:
+          type: string
+          enum:
+          - Latest
+          - Earliest
+        inputs:
+          type: array
+          items:
+            type: string
+        topicToSerdeClassName:
+          type: object
+          additionalProperties:
+            type: string
+        topicsPattern:
+          type: string
+        topicToSchemaType:
+          type: object
+          additionalProperties:
+            type: string
+        topicToSchemaProperties:
+          type: object
+          additionalProperties:
+            type: string
+        inputSpecs:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ConsumerConfig"
+        maxMessageRetries:
+          type: integer
+          format: int32
+        deadLetterTopic:
+          type: string
+        configs:
+          type: object
+          additionalProperties:
+            type: object
+        secrets:
+          type: object
+          additionalProperties:
+            type: object
+        parallelism:
+          type: integer
+          format: int32
+        processingGuarantees:
+          type: string
+          enum:
+          - ATLEAST_ONCE
+          - ATMOST_ONCE
+          - EFFECTIVELY_ONCE
+          - MANUAL
+        retainOrdering:
+          type: boolean
+        retainKeyOrdering:
+          type: boolean
+        resources:
+          $ref: "#/components/schemas/Resources"
+        autoAck:
+          type: boolean
+        timeoutMs:
+          type: integer
+          format: int64
+        negativeAckRedeliveryDelayMs:
+          type: integer
+          format: int64
+        sinkType:
+          type: string
+        archive:
+          type: string
+        cleanupSubscription:
+          type: boolean
+        runtimeFlags:
+          type: string
+        customRuntimeOptions:
+          type: string
+        transformFunction:
+          type: string
+        transformFunctionClassName:
+          type: string
+        transformFunctionConfig:
+          type: string
+        logTopic:
+          type: string
+        connection:
+          type: string
+        snServiceAccount:
+          type: string
+    SinkConfig:
+      type: object
+      properties:
+        tenant:
+          type: string
+        namespace:
+          type: string
+        name:
+          type: string
+        className:
+          type: string
+        sourceSubscriptionName:
+          type: string
+        sourceSubscriptionPosition:
+          type: string
+          enum:
+          - Latest
+          - Earliest
+        inputs:
+          type: array
+          items:
+            type: string
+        topicToSerdeClassName:
+          type: object
+          additionalProperties:
+            type: string
+        topicsPattern:
+          type: string
+        topicToSchemaType:
+          type: object
+          additionalProperties:
+            type: string
+        topicToSchemaProperties:
+          type: object
+          additionalProperties:
+            type: string
+        inputSpecs:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/ConsumerConfig"
+        maxMessageRetries:
+          type: integer
+          format: int32
+        deadLetterTopic:
+          type: string
+        configs:
+          type: object
+          additionalProperties:
+            type: object
+        secrets:
+          type: object
+          additionalProperties:
+            type: object
+        parallelism:
+          type: integer
+          format: int32
+        processingGuarantees:
+          type: string
+          enum:
+          - ATLEAST_ONCE
+          - ATMOST_ONCE
+          - EFFECTIVELY_ONCE
+          - MANUAL
+        retainOrdering:
+          type: boolean
+        retainKeyOrdering:
+          type: boolean
+        resources:
+          $ref: "#/components/schemas/Resources"
+        autoAck:
+          type: boolean
+        timeoutMs:
+          type: integer
+          format: int64
+        negativeAckRedeliveryDelayMs:
+          type: integer
+          format: int64
+        sinkType:
+          type: string
+        archive:
+          type: string
+        cleanupSubscription:
+          type: boolean
+        runtimeFlags:
+          type: string
+        customRuntimeOptions:
+          type: string
+        transformFunction:
+          type: string
+        transformFunctionClassName:
+          type: string
+        transformFunctionConfig:
+          type: string
+        logTopic:
+          type: string
+    SinkInstanceStatusData:
+      type: object
+      properties:
+        running:
+          type: boolean
+        error:
+          type: string
+        numRestarts:
+          type: integer
+          format: int64
+        numReadFromPulsar:
+          type: integer
+          format: int64
+        numSystemExceptions:
+          type: integer
+          format: int64
+        latestSystemExceptions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExceptionInformation"
+        numSinkExceptions:
+          type: integer
+          format: int64
+        latestSinkExceptions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExceptionInformation"
+        numWrittenToSink:
+          type: integer
+          format: int64
+        lastReceivedTime:
+          type: integer
+          format: int64
+        workerId:
+          type: string
+    SinkInstanceStatus:
+      type: object
+      properties:
+        instanceId:
+          type: integer
+          format: int32
+        status:
+          $ref: "#/components/schemas/SinkInstanceStatusData"
+    SinkStatus:
+      type: object
+      properties:
+        numInstances:
+          type: integer
+          format: int32
+        numRunning:
+          type: integer
+          format: int32
+        instances:
+          type: array
+          items:
+            $ref: "#/components/schemas/SinkInstanceStatus"
+    BatchSourceConfig:
+      type: object
+      properties:
+        discoveryTriggererClassName:
+          type: string
+        discoveryTriggererConfig:
+          type: object
+          additionalProperties:
+            type: object
+    RegistrySourceConfig:
+      type: object
+      properties:
+        tenant:
+          type: string
+        namespace:
+          type: string
+        name:
+          type: string
+        className:
+          type: string
+        topicName:
+          type: string
+        producerConfig:
+          $ref: "#/components/schemas/ProducerConfig"
+        serdeClassName:
+          type: string
+        schemaType:
+          type: string
+        configs:
+          type: object
+          additionalProperties:
+            type: object
+        secrets:
+          type: object
+          additionalProperties:
+            type: object
+        parallelism:
+          type: integer
+          format: int32
+        processingGuarantees:
+          type: string
+          enum:
+          - ATLEAST_ONCE
+          - ATMOST_ONCE
+          - EFFECTIVELY_ONCE
+          - MANUAL
+        resources:
+          $ref: "#/components/schemas/Resources"
+        sourceType:
+          type: string
+        archive:
+          type: string
+        runtimeFlags:
+          type: string
+        customRuntimeOptions:
+          type: string
+        batchSourceConfig:
+          $ref: "#/components/schemas/BatchSourceConfig"
+        batchBuilder:
+          type: string
+        logTopic:
+          type: string
+        connection:
+          type: string
+        snServiceAccount:
+          type: string
+    SourceConfig:
+      type: object
+      properties:
+        tenant:
+          type: string
+        namespace:
+          type: string
+        name:
+          type: string
+        className:
+          type: string
+        topicName:
+          type: string
+        producerConfig:
+          $ref: "#/components/schemas/ProducerConfig"
+        serdeClassName:
+          type: string
+        schemaType:
+          type: string
+        configs:
+          type: object
+          additionalProperties:
+            type: object
+        secrets:
+          type: object
+          additionalProperties:
+            type: object
+        parallelism:
+          type: integer
+          format: int32
+        processingGuarantees:
+          type: string
+          enum:
+          - ATLEAST_ONCE
+          - ATMOST_ONCE
+          - EFFECTIVELY_ONCE
+          - MANUAL
+        resources:
+          $ref: "#/components/schemas/Resources"
+        sourceType:
+          type: string
+        archive:
+          type: string
+        runtimeFlags:
+          type: string
+        customRuntimeOptions:
+          type: string
+        batchSourceConfig:
+          $ref: "#/components/schemas/BatchSourceConfig"
+        batchBuilder:
+          type: string
+        logTopic:
+          type: string
+    SourceInstanceStatusData:
+      type: object
+      properties:
+        running:
+          type: boolean
+        error:
+          type: string
+        numRestarts:
+          type: integer
+          format: int64
+        numReceivedFromSource:
+          type: integer
+          format: int64
+        numSystemExceptions:
+          type: integer
+          format: int64
+        latestSystemExceptions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExceptionInformation"
+        numSourceExceptions:
+          type: integer
+          format: int64
+        latestSourceExceptions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExceptionInformation"
+        numWritten:
+          type: integer
+          format: int64
+        lastReceivedTime:
+          type: integer
+          format: int64
+        workerId:
+          type: string
+    SourceInstanceStatus:
+      type: object
+      properties:
+        instanceId:
+          type: integer
+          format: int32
+        status:
+          $ref: "#/components/schemas/SourceInstanceStatusData"
+    SourceStatus:
+      type: object
+      properties:
+        numInstances:
+          type: integer
+          format: int32
+        numRunning:
+          type: integer
+          format: int32
+        instances:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceInstanceStatus"
+    ConfigKeyInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        required:
+          type: boolean
+        default_value:
+          type: string
+        importance:
+          type: string
+        documentation:
+          type: string
+        group:
+          type: string
+        order_in_group:
+          type: integer
+          format: int32
+          writeOnly: true
+        width:
+          type: string
+        display_name:
+          type: string
+        dependents:
+          type: array
+          items:
+            type: string
+        order:
+          type: integer
+          format: int32
+    ErrorMessage:
+      type: object
+      properties:
+        error_code:
+          type: integer
+          format: int32
+        message:
+          type: string
+    PluginInfo:
+      type: object
+      properties:
+        class:
+          type: string
+        type:
+          type: string
+        version:
+          type: string
+    FunctionMeshConnectorDefinition:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        sourceClass:
+          type: string
+        sinkClass:
+          type: string
+        sourceConfigClass:
+          type: string
+        sinkConfigClass:
+          type: string
+        id:
+          type: string
+        version:
+          type: string
+        imageRegistry:
+          type: string
+        imageRepository:
+          type: string
+        imageTag:
+          type: string
+        typeClassName:
+          type: string
+        sourceTypeClassName:
+          type: string
+        sinkTypeClassName:
+          type: string
+        jarFullName:
+          type: string
+        defaultSchemaType:
+          type: string
+        defaultSerdeClassName:
+          type: string
+        iconLink:
+          type: string
+        sinkDocLink:
+          type: string
+        sourceDocLink:
+          type: string
+        sinkConfigFieldDefinitions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConfigFieldDefinition"
+        sourceConfigFieldDefinitions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConfigFieldDefinition"
+        jar:
+          type: string
+    ConfigInfo:
+      type: object
+      properties:
+        definition:
+          $ref: "#/components/schemas/ConfigKeyInfo"
+        value:
+          $ref: "#/components/schemas/ConfigValueInfo"
+    ConfigInfos:
+      type: object
+      properties:
+        name:
+          type: string
+        error_count:
+          type: integer
+          format: int32
+        groups:
+          type: array
+          items:
+            type: string
+        configs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConfigInfo"
+    ConfigValueInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+        recommended_values:
+          type: array
+          items:
+            type: string
+        errors:
+          type: array
+          items:
+            type: string
+        visible:
+          type: boolean
+    WorkerStatus:
+      type: object
+      properties:
+        status:
+          type: string
+        message:
+          type: string
+    ServerInfo:
+      type: object
+      properties:
+        version:
+          type: string
+        commit:
+          type: string
+        kafka_cluster_id:
+          type: string
+    Message:
+      type: object
+      properties:
+        message:
+          type: string
+    ConnectorOffset:
+      type: object
+      properties:
+        partition:
+          type: object
+          additionalProperties:
+            type: object
+        offset:
+          type: object
+          additionalProperties:
+            type: object
+    ConnectorOffsets:
+      type: object
+      properties:
+        offsets:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConnectorOffset"
+    ConnectorInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        config:
+          type: object
+          additionalProperties:
+            type: string
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConnectorTaskId"
+        type:
+          type: string
+          enum:
+          - source
+          - sink
+          - unknown
+    ConnectorTaskId:
+      type: object
+      properties:
+        connector:
+          type: string
+        task:
+          type: integer
+          format: int32
+    CreateConnectorRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        config:
+          type: object
+          additionalProperties:
+            type: string
+        initial_state:
+          type: string
+          enum:
+          - RUNNING
+          - PAUSED
+          - STOPPED
+    ConnectorState:
+      type: object
+      properties:
+        state:
+          type: string
+        worker_id:
+          type: string
+        msg:
+          type: string
+          writeOnly: true
+        trace:
+          type: string
+    ConnectorStateInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        connector:
+          $ref: "#/components/schemas/ConnectorState"
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/TaskState"
+        type:
+          type: string
+          enum:
+          - source
+          - sink
+          - unknown
+    TaskState:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int32
+        state:
+          type: string
+        worker_id:
+          type: string
+        msg:
+          type: string
+          writeOnly: true
+        trace:
+          type: string
+    TaskInfo:
+      type: object
+      properties:
+        id:
+          $ref: "#/components/schemas/ConnectorTaskId"
+        config:
+          type: object
+          additionalProperties:
+            type: string
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
