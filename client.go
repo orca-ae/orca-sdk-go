@@ -16,6 +16,8 @@ import (
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/orca-ae/orca-sdk-go/internal/apierror"
 )
 
 const (
@@ -28,22 +30,6 @@ const (
 	defaultJSONResponseBodyLimit = 10 << 20
 	defaultMultipartBodyLimit    = 10 << 20
 )
-
-// HTTPError represents a non-successful registry response.
-type HTTPError struct {
-	Method     string
-	URL        string
-	StatusCode int
-	Body       string
-}
-
-func (e *HTTPError) Error() string {
-	if e.Body == "" {
-		return fmt.Sprintf("%s %s returned status %d", e.Method, e.URL, e.StatusCode)
-	}
-
-	return fmt.Sprintf("%s %s returned status %d: %s", e.Method, e.URL, e.StatusCode, e.Body)
-}
 
 // Client is the base registry HTTP client.
 type Client struct {
@@ -128,7 +114,7 @@ func NewUnauthenticatedClient(baseURL string, httpClient *http.Client) (*Client,
 // warningWriter. It is intended for command hosts that provide their own stderr stream.
 func NewClientWithWarningWriter(baseURL, token string, httpClient *http.Client, warningWriter io.Writer) (*Client, error) {
 	if strings.TrimSpace(token) == "" {
-		return nil, fmt.Errorf("registry access token is required")
+		return nil, apierror.Validationf("registry access token is required")
 	}
 	if warningWriter == nil {
 		warningWriter = os.Stderr
@@ -145,7 +131,7 @@ func NewAPIKeyClient(baseURL, apiKey string, httpClient *http.Client) (*Client, 
 // to warningWriter.
 func NewAPIKeyClientWithWarningWriter(baseURL, apiKey string, httpClient *http.Client, warningWriter io.Writer) (*Client, error) {
 	if strings.TrimSpace(apiKey) == "" {
-		return nil, fmt.Errorf("registry API key is required")
+		return nil, apierror.Validationf("registry API key is required")
 	}
 	if warningWriter == nil {
 		warningWriter = os.Stderr
@@ -168,12 +154,12 @@ func NewUnauthenticatedClientWithWarningWriter(baseURL string, httpClient *http.
 
 func newClient(baseURL, token string, httpClient *http.Client, warningWriter io.Writer) (*Client, error) {
 	if strings.TrimSpace(baseURL) == "" {
-		return nil, fmt.Errorf("registry base URL is required")
+		return nil, apierror.Validationf("registry base URL is required")
 	}
 
 	parsedBaseURL, err := url.Parse(baseURL)
 	if err != nil {
-		return nil, fmt.Errorf("invalid registry base URL %q: %w", baseURL, err)
+		return nil, apierror.Validationf("invalid registry base URL %q: %w", baseURL, err)
 	}
 
 	if stripped, matchedSuffix := stripLegacyBaseURLSuffix(parsedBaseURL.Path); matchedSuffix != "" {
@@ -229,12 +215,12 @@ func (c *Client) GetJSON(ctx context.Context, path string, out interface{}) erro
 // GetToWriter performs a GET request and streams the raw response body to writer.
 func (c *Client) GetToWriter(ctx context.Context, path string, writer io.Writer) error {
 	if writer == nil {
-		return fmt.Errorf("response writer is required")
+		return apierror.Validationf("response writer is required")
 	}
 
 	return c.GetStream(ctx, path, "*/*", func(reader io.Reader) error {
 		if _, err := io.Copy(writer, reader); err != nil {
-			return fmt.Errorf("failed to stream response: %w", err)
+			return apierror.Errorf("failed to stream response: %w", err)
 		}
 		return nil
 	})
@@ -243,7 +229,7 @@ func (c *Client) GetToWriter(ctx context.Context, path string, writer io.Writer)
 // GetStream performs a GET request and lets handle consume the raw response body.
 func (c *Client) GetStream(ctx context.Context, path string, accept string, handle func(io.Reader) error) error {
 	if handle == nil {
-		return fmt.Errorf("response handler is required")
+		return apierror.Validationf("response handler is required")
 	}
 
 	endpoint, err := c.resolveURL(path)
@@ -253,7 +239,7 @@ func (c *Client) GetStream(ctx context.Context, path string, accept string, hand
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create %s request: %w", http.MethodGet, err)
+		return apierror.Errorf("failed to create %s request: %w", http.MethodGet, err)
 	}
 
 	if c.token != "" {
@@ -267,25 +253,20 @@ func (c *Client) GetStream(ctx context.Context, path string, accept string, hand
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to execute %s %s: %w", http.MethodGet, endpoint, err)
+		return apierror.FromTransport(ctx, http.MethodGet, endpoint, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		responseBytes, readErr := readResponseBodyLimited(resp.Body, defaultJSONResponseBodyLimit)
 		if readErr != nil {
-			return fmt.Errorf("failed to read %s %s response: %w", http.MethodGet, endpoint, readErr)
+			return apierror.Errorf("failed to read %s %s response: %w", http.MethodGet, endpoint, readErr)
 		}
-		return &HTTPError{
-			Method:     http.MethodGet,
-			URL:        endpoint,
-			StatusCode: resp.StatusCode,
-			Body:       strings.TrimSpace(string(responseBytes)),
-		}
+		return apierror.FromResponse(http.MethodGet, endpoint, resp.StatusCode, string(responseBytes), resp.Header)
 	}
 
 	if err := handle(resp.Body); err != nil {
-		return fmt.Errorf("failed to stream %s %s response: %w", http.MethodGet, endpoint, err)
+		return apierror.Errorf("failed to stream %s %s response: %w", http.MethodGet, endpoint, err)
 	}
 
 	return nil
@@ -339,14 +320,14 @@ func (c *Client) doJSON(ctx context.Context, method, path string, requestBody in
 	if requestBody != nil {
 		payload, err := json.Marshal(requestBody)
 		if err != nil {
-			return fmt.Errorf("failed to marshal %s payload: %w", method, err)
+			return apierror.Errorf("failed to marshal %s payload: %w", method, err)
 		}
 		bodyReader = bytes.NewReader(payload)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, bodyReader)
 	if err != nil {
-		return fmt.Errorf("failed to create %s request: %w", method, err)
+		return apierror.Errorf("failed to create %s request: %w", method, err)
 	}
 
 	if c.token != "" {
@@ -360,22 +341,17 @@ func (c *Client) doJSON(ctx context.Context, method, path string, requestBody in
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to execute %s %s: %w", method, endpoint, err)
+		return apierror.FromTransport(ctx, method, endpoint, err)
 	}
 	defer resp.Body.Close()
 
 	responseBytes, err := readResponseBodyLimited(resp.Body, defaultJSONResponseBodyLimit)
 	if err != nil {
-		return fmt.Errorf("failed to read %s %s response: %w", method, endpoint, err)
+		return apierror.Errorf("failed to read %s %s response: %w", method, endpoint, err)
 	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return &HTTPError{
-			Method:     method,
-			URL:        endpoint,
-			StatusCode: resp.StatusCode,
-			Body:       strings.TrimSpace(string(responseBytes)),
-		}
+		return apierror.FromResponse(method, endpoint, resp.StatusCode, string(responseBytes), resp.Header)
 	}
 
 	if responseBody == nil || len(bytes.TrimSpace(responseBytes)) == 0 {
@@ -383,7 +359,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, requestBody in
 	}
 
 	if err := json.Unmarshal(responseBytes, responseBody); err != nil {
-		return fmt.Errorf("failed to decode %s %s response: %w", method, endpoint, err)
+		return &apierror.DecodeError{Method: method, URL: endpoint, Err: err}
 	}
 
 	return nil
@@ -397,14 +373,14 @@ func (c *Client) doMultipart(ctx context.Context, method, path string, requestBo
 
 	hasConfig := strings.TrimSpace(requestBody.ConfigField) != "" || requestBody.Config != nil
 	if !allowEmptyConfig && !hasConfig {
-		return nil, fmt.Errorf("multipart config field is required")
+		return nil, apierror.Validationf("multipart config field is required")
 	}
 	if hasConfig {
 		if strings.TrimSpace(requestBody.ConfigField) == "" {
-			return nil, fmt.Errorf("multipart config field is required")
+			return nil, apierror.Validationf("multipart config field is required")
 		}
 		if requestBody.Config == nil {
-			return nil, fmt.Errorf("multipart config payload is required")
+			return nil, apierror.Validationf("multipart config payload is required")
 		}
 	}
 
@@ -427,7 +403,7 @@ func (c *Client) doMultipart(ctx context.Context, method, path string, requestBo
 
 	if strings.TrimSpace(requestBody.URL) != "" {
 		if err := writer.WriteField("url", requestBody.URL); err != nil {
-			return nil, fmt.Errorf("failed to write multipart url field: %w", err)
+			return nil, apierror.Errorf("failed to write multipart url field: %w", err)
 		}
 	}
 
@@ -442,7 +418,7 @@ func (c *Client) doMultipart(ctx context.Context, method, path string, requestBo
 			continue
 		}
 		if err := writer.WriteField(fieldName, fieldValue); err != nil {
-			return nil, fmt.Errorf("failed to write multipart %s field: %w", fieldName, err)
+			return nil, apierror.Errorf("failed to write multipart %s field: %w", fieldName, err)
 		}
 	}
 
@@ -462,12 +438,12 @@ func (c *Client) doMultipart(ctx context.Context, method, path string, requestBo
 	}
 
 	if err := writer.Close(); err != nil {
-		return nil, fmt.Errorf("failed to finalize multipart request: %w", err)
+		return nil, apierror.Errorf("failed to finalize multipart request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, bodyBuf)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create %s request: %w", method, err)
+		return nil, apierror.Errorf("failed to create %s request: %w", method, err)
 	}
 
 	if c.token != "" {
@@ -483,22 +459,17 @@ func (c *Client) doMultipart(ctx context.Context, method, path string, requestBo
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute %s %s: %w", method, endpoint, err)
+		return nil, apierror.FromTransport(ctx, method, endpoint, err)
 	}
 	defer resp.Body.Close()
 
 	responseBytes, err := readResponseBodyLimited(resp.Body, defaultMultipartBodyLimit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read %s %s response: %w", method, endpoint, err)
+		return nil, apierror.Errorf("failed to read %s %s response: %w", method, endpoint, err)
 	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, &HTTPError{
-			Method:     method,
-			URL:        endpoint,
-			StatusCode: resp.StatusCode,
-			Body:       strings.TrimSpace(string(responseBytes)),
-		}
+		return nil, apierror.FromResponse(method, endpoint, resp.StatusCode, string(responseBytes), resp.Header)
 	}
 
 	return responseBytes, nil
@@ -535,7 +506,7 @@ func readResponseBodyLimited(body io.Reader, limit int64) ([]byte, error) {
 		return nil, err
 	}
 	if int64(len(responseBytes)) > limit {
-		return nil, fmt.Errorf("response body exceeds limit of %d bytes", limit)
+		return nil, apierror.Errorf("response body exceeds limit of %d bytes", limit)
 	}
 
 	return responseBytes, nil
@@ -554,10 +525,10 @@ func writeMultipartFileField(writer *multipart.Writer, file *MultipartFile) erro
 	if strings.TrimSpace(file.ContentType) == "" {
 		part, err := writer.CreateFormFile(fieldName, fileName)
 		if err != nil {
-			return fmt.Errorf("failed to create multipart file part: %w", err)
+			return apierror.Errorf("failed to create multipart file part: %w", err)
 		}
 		if _, err := part.Write(file.Content); err != nil {
-			return fmt.Errorf("failed to write multipart file part: %w", err)
+			return apierror.Errorf("failed to write multipart file part: %w", err)
 		}
 		return nil
 	}
@@ -569,10 +540,10 @@ func writeMultipartFileField(writer *multipart.Writer, file *MultipartFile) erro
 	header.Set("Content-Type", file.ContentType)
 	part, err := writer.CreatePart(header)
 	if err != nil {
-		return fmt.Errorf("failed to create multipart file part: %w", err)
+		return apierror.Errorf("failed to create multipart file part: %w", err)
 	}
 	if _, err := part.Write(file.Content); err != nil {
-		return fmt.Errorf("failed to write multipart file part: %w", err)
+		return apierror.Errorf("failed to write multipart file part: %w", err)
 	}
 	return nil
 }
@@ -591,16 +562,16 @@ func writeMultipartJSONField(writer *multipart.Writer, fieldName string, value i
 
 	part, err := writer.CreatePart(header)
 	if err != nil {
-		return fmt.Errorf("failed to create multipart %s field: %w", fieldName, err)
+		return apierror.Errorf("failed to create multipart %s field: %w", fieldName, err)
 	}
 
 	payload, err := json.Marshal(value)
 	if err != nil {
-		return fmt.Errorf("failed to marshal multipart %s payload: %w", fieldName, err)
+		return apierror.Errorf("failed to marshal multipart %s payload: %w", fieldName, err)
 	}
 
 	if _, err := part.Write(payload); err != nil {
-		return fmt.Errorf("failed to write multipart %s payload: %w", fieldName, err)
+		return apierror.Errorf("failed to write multipart %s payload: %w", fieldName, err)
 	}
 
 	return nil
@@ -608,13 +579,13 @@ func writeMultipartJSONField(writer *multipart.Writer, fieldName string, value i
 
 func (c *Client) resolveURL(path string) (string, error) {
 	if strings.TrimSpace(path) == "" {
-		return "", fmt.Errorf("registry path is required")
+		return "", apierror.Validationf("registry path is required")
 	}
 
 	relativePath := c.pathPrefix + strings.TrimPrefix(path, "/")
 	relativeURL, err := url.Parse(relativePath)
 	if err != nil {
-		return "", fmt.Errorf("invalid registry path %q: %w", path, err)
+		return "", apierror.Validationf("invalid registry path %q: %w", path, err)
 	}
 
 	return c.baseURL.ResolveReference(relativeURL).String(), nil

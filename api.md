@@ -223,12 +223,6 @@ func (t FlexibleTimestamp) MarshalJSON() ([]byte, error)
 func (t *FlexibleTimestamp) UnmarshalJSON(data []byte) error
 ```
 
-### HTTPError
-
-```go
-func (e *HTTPError) Error() string
-```
-
 ## Package functions
 
 ```go
@@ -239,17 +233,22 @@ func ToConnectionList(configs []ConnectionConfig) ConnectionList
 
 ## Data types
 
+- `APIError`
 - `APIGroup`
 - `APIGroupVersion`
 - `APIResource`
 - `APIResourceList`
 - `APIVersions`
 - `AgentProviderInfo`
+- `AuthenticationError`
+- `BadRequestError`
 - `BatchSourceConfig`
 - `ConfigFieldDefinition`
 - `ConfigKeyInfo`
+- `ConflictError`
 - `Connection`
 - `ConnectionCondition`
+- `ConnectionError`
 - `ConnectionHealthStatus`
 - `ConnectionList`
 - `ConnectionPhase`
@@ -268,6 +267,8 @@ func ToConnectionList(configs []ConnectionConfig) ConnectionList
 - `ConsumerConfig`
 - `CoreProbeStatus`
 - `CreateConnectorRequest`
+- `DecodeError`
+- `Error`
 - `FunctionInstanceStats`
 - `FunctionInstanceStatsData`
 - `FunctionInstanceStatsDataBase`
@@ -277,17 +278,22 @@ func ToConnectionList(configs []ConnectionConfig) ConnectionList
 - `FunctionState`
 - `FunctionStats`
 - `FunctionStatus`
+- `HTTPError`
+- `InternalServerError`
 - `KafkaConnectionConfig`
 - `Message`
 - `MultipartFile`
 - `MultipartRequest`
+- `NotFoundError`
 - `OtherConnectionConfig`
 - `PackageMetadata`
+- `PermissionDeniedError`
 - `PluginInfo`
 - `ProducerConfig`
 - `PulsarAuthConfig`
 - `PulsarConnectionConfig`
 - `PulsarTLSConfig`
+- `RateLimitError`
 - `RegistryFunctionConfig`
 - `RegistrySinkConfig`
 - `RegistrySourceConfig`
@@ -304,6 +310,10 @@ func ToConnectionList(configs []ConnectionConfig) ConnectionList
 - `TaskConfig`
 - `TaskInfo`
 - `TaskState`
+- `TimeoutError`
+- `UnprocessableEntityError`
 - `UpdateOptionsImpl`
+- `UserAbortError`
+- `ValidationError`
 - `WindowConfig`
 - `WorkerStatus`

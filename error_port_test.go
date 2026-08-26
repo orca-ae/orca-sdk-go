@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 // Ported from orca-sdk-typescript tests/core/error.test.ts.
@@ -98,17 +99,158 @@ func TestHTTPErrorStatusClassification(t *testing.T) {
 
 	t.Run("maps each status to its own error class", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("not implemented: per-status error classes (BadRequestError, AuthenticationError, " +
-			"PermissionDeniedError, NotFoundError, ConflictError, UnprocessableEntityError, " +
-			"RateLimitError, InternalServerError) — every failing status yields the same " +
-			"*HTTPError, so callers must switch on StatusCode")
+
+		// Each status gets its own type so a caller can react to the one it
+		// cares about without reading a status code back out of a generic
+		// error. Every status is checked against every matcher, so a type that
+		// matched two statuses - or the wrong one - fails here.
+		matchers := []struct {
+			status  int
+			name    string
+			matches func(error) bool
+		}{
+			{http.StatusBadRequest, "*BadRequestError", func(err error) bool {
+				var e *BadRequestError
+				return errors.As(err, &e)
+			}},
+			{http.StatusUnauthorized, "*AuthenticationError", func(err error) bool {
+				var e *AuthenticationError
+				return errors.As(err, &e)
+			}},
+			{http.StatusForbidden, "*PermissionDeniedError", func(err error) bool {
+				var e *PermissionDeniedError
+				return errors.As(err, &e)
+			}},
+			{http.StatusNotFound, "*NotFoundError", func(err error) bool {
+				var e *NotFoundError
+				return errors.As(err, &e)
+			}},
+			{http.StatusConflict, "*ConflictError", func(err error) bool {
+				var e *ConflictError
+				return errors.As(err, &e)
+			}},
+			{http.StatusUnprocessableEntity, "*UnprocessableEntityError", func(err error) bool {
+				var e *UnprocessableEntityError
+				return errors.As(err, &e)
+			}},
+			{http.StatusTooManyRequests, "*RateLimitError", func(err error) bool {
+				var e *RateLimitError
+				return errors.As(err, &e)
+			}},
+		}
+
+		for _, status := range errorStatuses {
+			t.Run(fmt.Sprintf("%d", status), func(t *testing.T) {
+				t.Parallel()
+
+				client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+					return jsonResponse(status, `{}`), nil
+				})
+				var out map[string]any
+				err := client.GetJSON(context.Background(), "/v1/agents", &out)
+
+				for _, matcher := range matchers {
+					want := matcher.status == status
+					if got := matcher.matches(err); got != want {
+						t.Errorf("errors.As(%s) = %v, want %v for status %d",
+							matcher.name, got, want, status)
+					}
+				}
+
+				// Any 5xx is an InternalServerError; 418 is mapped by nothing
+				// and stays a bare *APIError.
+				var serverErr *InternalServerError
+				if got, want := errors.As(err, &serverErr), status >= 500; got != want {
+					t.Errorf("errors.As(*InternalServerError) = %v, want %v for status %d",
+						got, want, status)
+				}
+
+				// Whichever type it is, the general one is still reachable, so
+				// a caller that only wants the status code never has to
+				// enumerate the specific types.
+				var apiErr *APIError
+				if !errors.As(err, &apiErr) {
+					t.Fatalf("errors.As(*APIError) = false for status %d (error %T)", status, err)
+				}
+				if apiErr.StatusCode != status {
+					t.Errorf("StatusCode = %d, want %d", apiErr.StatusCode, status)
+				}
+			})
+		}
 	})
 
 	t.Run("exposes a shared error root the whole SDK descends from", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("not implemented: shared OrcaError root type — there is no package-level error " +
-			"type that argument-validation, decode and HTTP failures all satisfy, so " +
-			"`errors.As(err, &orcaErr)` cannot be used to catch every SDK failure")
+
+		// The point of the root is that a caller can tell "the SDK failed"
+		// from "something else in my program failed" without enumerating
+		// types. That only holds if failures which never reach the network
+		// satisfy it too, so this covers all the origins.
+		tests := []struct {
+			name string
+			call func() error
+		}{
+			{
+				name: "argument validation, before any request",
+				call: func() error {
+					_, err := NewClientWithWarningWriter("", "token", nil, io.Discard)
+					return err
+				},
+			},
+			{
+				name: "a path the client refuses to resolve",
+				call: func() error {
+					client, _ := newRecordingClient(t, nil)
+					var out map[string]any
+					return client.GetJSON(context.Background(), "", &out)
+				},
+			},
+			{
+				name: "a failing status",
+				call: func() error {
+					client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+						return jsonResponse(http.StatusInternalServerError, `{}`), nil
+					})
+					var out map[string]any
+					return client.GetJSON(context.Background(), "/v1/agents", &out)
+				},
+			},
+			{
+				name: "a body that will not decode",
+				call: func() error {
+					client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+						return jsonResponse(http.StatusOK, "not json"), nil
+					})
+					var out map[string]any
+					return client.GetJSON(context.Background(), "/v1/agents", &out)
+				},
+			},
+			{
+				name: "a transport that never answers",
+				call: func() error {
+					client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+						return nil, errors.New("dial tcp: connection refused")
+					})
+					var out map[string]any
+					return client.GetJSON(context.Background(), "/v1/agents", &out)
+				},
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				err := tc.call()
+				if err == nil {
+					t.Fatal("expected a failure, got nil")
+				}
+				var orcaErr Error
+				if !errors.As(err, &orcaErr) {
+					t.Errorf("errors.As(orca.Error) = false for %T (%v)", err, err)
+				}
+			})
+		}
 	})
 }
 
@@ -365,9 +507,85 @@ func TestErrorTaxonomy(t *testing.T) {
 
 	t.Run("distinguishes an aborted request from a timed-out one by type", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("not implemented: APIUserAbortError / APIConnectionTimeoutError types with " +
-			"default messages — cancellation and deadline are only distinguishable via " +
-			"errors.Is on the context sentinels, and neither carries an SDK-owned message")
+
+		// http.Client reports a cancelled context, an exceeded deadline, and a
+		// refused connection through the same error value, so a caller cannot
+		// tell "I cancelled this" from "the server is too slow" from "the
+		// server is unreachable" without help. Only the middle case argues for
+		// a longer deadline and only the last argues for a retry, so the SDK
+		// classifies them.
+		tests := []struct {
+			name      string
+			ctx       func(t *testing.T) context.Context
+			transport error
+			matches   func(error) bool
+			wantType  string
+		}{
+			{
+				name: "cancelled by the caller",
+				ctx: func(t *testing.T) context.Context {
+					ctx, cancel := context.WithCancel(context.Background())
+					cancel()
+					return ctx
+				},
+				transport: context.Canceled,
+				matches: func(err error) bool {
+					var e *UserAbortError
+					return errors.As(err, &e)
+				},
+				wantType: "*UserAbortError",
+			},
+			{
+				name: "deadline exceeded",
+				ctx: func(t *testing.T) context.Context {
+					ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+					t.Cleanup(cancel)
+					time.Sleep(time.Millisecond)
+					return ctx
+				},
+				transport: context.DeadlineExceeded,
+				matches: func(err error) bool {
+					var e *TimeoutError
+					return errors.As(err, &e)
+				},
+				wantType: "*TimeoutError",
+			},
+			{
+				name:      "connection refused",
+				ctx:       func(*testing.T) context.Context { return context.Background() },
+				transport: errors.New("dial tcp 127.0.0.1:443: connect: connection refused"),
+				matches: func(err error) bool {
+					var e *ConnectionError
+					return errors.As(err, &e)
+				},
+				wantType: "*ConnectionError",
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+					return nil, tc.transport
+				})
+
+				var out map[string]any
+				err := client.GetJSON(tc.ctx(t), "/v1/agents", &out)
+				if err == nil {
+					t.Fatal("GetJSON() error = nil, want a failure")
+				}
+				if !tc.matches(err) {
+					t.Errorf("error = %T (%v), want %s", err, err, tc.wantType)
+				}
+
+				// No response ever arrived, so there is no status to report.
+				var apiErr *APIError
+				if errors.As(err, &apiErr) {
+					t.Errorf("errors.As(*APIError) = true for %T, want false", err)
+				}
+			})
+		}
 	})
 }
 
@@ -380,14 +598,88 @@ func TestHTTPErrorRequestID(t *testing.T) {
 
 	t.Run("reads requestID from the request-id response header", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("not implemented: request-ID capture — *HTTPError keeps no response headers, so " +
-			"the request-id a deployment returns cannot be surfaced to the caller or logged " +
-			"alongside the failure")
+
+		// The request ID is what ties a failure to the server-side logs, so it
+		// has to survive onto the error rather than being dropped with the
+		// response. Deployments differ on the header name.
+		tests := []struct {
+			name   string
+			header string
+			want   string
+		}{
+			{name: "request-id", header: "Request-Id", want: "req_abc123"},
+			{name: "x-request-id", header: "X-Request-Id", want: "req_def456"},
+			{name: "x-correlation-id", header: "X-Correlation-Id", want: "corr_789"},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+					res := jsonResponse(http.StatusInternalServerError, `{}`)
+					res.Header.Set(tc.header, tc.want)
+					return res, nil
+				})
+
+				var out map[string]any
+				err := client.GetJSON(context.Background(), "/v1/agents", &out)
+
+				var apiErr *APIError
+				if !errors.As(err, &apiErr) {
+					t.Fatalf("GetJSON() error = %T, want *APIError", err)
+				}
+				if apiErr.RequestID != tc.want {
+					t.Errorf("RequestID = %q, want %q", apiErr.RequestID, tc.want)
+				}
+			})
+		}
+
+		t.Run("absent when the server sends none", func(t *testing.T) {
+			t.Parallel()
+
+			client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+				return jsonResponse(http.StatusInternalServerError, `{}`), nil
+			})
+
+			var out map[string]any
+			err := client.GetJSON(context.Background(), "/v1/agents", &out)
+
+			var apiErr *APIError
+			if !errors.As(err, &apiErr) {
+				t.Fatalf("GetJSON() error = %T, want *APIError", err)
+			}
+			if apiErr.RequestID != "" {
+				t.Errorf("RequestID = %q, want empty", apiErr.RequestID)
+			}
+		})
 	})
 
 	t.Run("exposes the failing response headers", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("not implemented: response header access on errors — nothing can read Retry-After, " +
-			"rate-limit budgets, or deprecation headers off a failed call")
+
+		// Retry-After is the case that matters: without the headers a caller
+		// being rate limited has no way to learn how long to wait, and has to
+		// guess a backoff the server already told it.
+		client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+			res := jsonResponse(http.StatusTooManyRequests, `{}`)
+			res.Header.Set("Retry-After", "42")
+			res.Header.Set("X-Ratelimit-Remaining", "0")
+			return res, nil
+		})
+
+		var out map[string]any
+		err := client.GetJSON(context.Background(), "/v1/agents", &out)
+
+		var rateLimitErr *RateLimitError
+		if !errors.As(err, &rateLimitErr) {
+			t.Fatalf("GetJSON() error = %T, want *RateLimitError", err)
+		}
+		if got := rateLimitErr.Header.Get("Retry-After"); got != "42" {
+			t.Errorf("Header.Get(Retry-After) = %q, want %q", got, "42")
+		}
+		if got := rateLimitErr.Header.Get("X-Ratelimit-Remaining"); got != "0" {
+			t.Errorf("Header.Get(X-Ratelimit-Remaining) = %q, want %q", got, "0")
+		}
 	})
 }

@@ -602,9 +602,32 @@ func TestClientErrorMapping(t *testing.T) {
 
 	t.Run("maps each status to a distinct error type", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("not implemented: typed error hierarchy (BadRequestError, AuthenticationError, " +
-			"NotFoundError, RateLimitError, …) — every failing status yields one *HTTPError; " +
-			"see error_port_test.go")
+
+		// The exhaustive per-status mapping lives in error_port_test.go. What
+		// this pins is the property the request pipeline is responsible for:
+		// whichever specific type comes back, it still carries the method, URL
+		// and status of the request that produced it, so a caller matching the
+		// narrow type loses none of the context the general one carried.
+		client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+			return jsonResponse(http.StatusTooManyRequests, `{"error":{"type":"rate_limit"}}`), nil
+		})
+
+		var out map[string]any
+		err := client.GetJSON(context.Background(), "/v1/agents/a1", &out)
+
+		var rateLimitErr *RateLimitError
+		if !errors.As(err, &rateLimitErr) {
+			t.Fatalf("GetJSON() error = %T, want *RateLimitError", err)
+		}
+		if rateLimitErr.StatusCode != http.StatusTooManyRequests {
+			t.Errorf("status = %d, want %d", rateLimitErr.StatusCode, http.StatusTooManyRequests)
+		}
+		if rateLimitErr.Method != http.MethodGet {
+			t.Errorf("method = %q, want %q", rateLimitErr.Method, http.MethodGet)
+		}
+		if want := testBaseURL + "/v1/agents/a1"; rateLimitErr.URL != want {
+			t.Errorf("URL = %q, want %q", rateLimitErr.URL, want)
+		}
 	})
 }
 
