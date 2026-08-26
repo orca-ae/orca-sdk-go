@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+echo "==> Checking gofmt"
+if [ -n "$(gofmt -s -l .)" ]; then
+	echo "The following files are not formatted. Run ./scripts/format" >&2
+	gofmt -s -l . >&2
+	exit 1
+fi
+
+echo "==> Running go vet"
+go vet ./...
+
+echo "==> Running Go build"
+go build ./...
+
+echo "==> Checking tests compile"
+go test -run=^$ ./...
