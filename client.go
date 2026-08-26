@@ -14,6 +14,7 @@ import (
 	"github.com/orca-ae/orca-sdk-go/internal/apierror"
 	"github.com/orca-ae/orca-sdk-go/internal/requestconfig"
 	"github.com/orca-ae/orca-sdk-go/option"
+	"github.com/orca-ae/orca-sdk-go/packages/pagination"
 	"github.com/orca-ae/orca-sdk-go/packages/ssestream"
 )
 
@@ -328,6 +329,47 @@ func (c *Client) openStream(
 	}
 
 	return resp.Body, endpoint, nil
+}
+
+// ListPage fetches one page of a paginated list.
+//
+// Like [StreamEvents] it is a function rather than a method, because Go does
+// not allow methods to introduce type parameters. The returned cursor fetches
+// its successors through this same client, so retries, credentials and
+// per-call options apply to every page and not just the first:
+//
+//	page, err := orca.ListPage[Agent](ctx, client, "v1/agents")
+//	if err != nil {
+//		return err
+//	}
+//	for agent, err := range page.All(ctx) {
+//		if err != nil {
+//			return err
+//		}
+//		...
+//	}
+func ListPage[T any](
+	ctx context.Context,
+	client *Client,
+	path string,
+	opts ...option.RequestOption,
+) (*pagination.PageCursor[T], error) {
+	cfg, err := client.cfg.With(opts...)
+	if err != nil {
+		return nil, err
+	}
+	// Resolved up front so the cursor holds an absolute URL to derive the next
+	// page's query from. Re-resolving an absolute URL is a no-op, so the
+	// per-page fetch below stays a normal request.
+	endpoint, err := cfg.ResolveURL(path)
+	if err != nil {
+		return nil, err
+	}
+
+	get := func(ctx context.Context, rawURL string, out any) error {
+		return client.GetJSON(ctx, rawURL, out, opts...)
+	}
+	return pagination.Fetch[T](ctx, endpoint, get)
 }
 
 // StreamEvents opens a Server-Sent Events stream at path and decodes each
