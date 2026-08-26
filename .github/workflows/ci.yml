@@ -111,7 +111,12 @@ jobs:
         id: compare
         run: |
           set -uo pipefail
-          base="$(git merge-base HEAD origin/main)"
+          # The PR's own base, not main. In a stacked pull request the base is
+          # the branch below, so this measures what THIS pull request changes
+          # rather than re-reporting every break already under review beneath it.
+          base_ref="${{ github.event.pull_request.base.ref }}"
+          git fetch --quiet --depth=200 origin "$base_ref"
+          base="$(git merge-base HEAD FETCH_HEAD)"
           # `|| status=$?` rather than a bare call: Actions runs this shell with
           # -e, which would kill the step on a non-zero exit before the code
           # could be captured - and the whole point is to react to it.
