@@ -2,7 +2,10 @@
 
 package orca
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 // The shared harness for the ported specification tables.
 //
@@ -60,4 +63,21 @@ func pendingPortSurface(t *testing.T, spec []pendingPortOp) {
 	for _, op := range spec {
 		t.Errorf("no typed resource implements %s: %s %s", op.Name, op.Method, op.Path)
 	}
+}
+
+// structFieldNames returns the exported field names of a struct value.
+//
+// It is used to assert that a request type cannot express a field the contract
+// removed. Checking the type rather than the request body is what makes the
+// guarantee compile-time: a field that does not exist cannot be set by mistake
+// and then rejected by the server at run time.
+func structFieldNames(value any) []string {
+	typ := reflect.TypeOf(value)
+	names := make([]string, 0, typ.NumField())
+	for i := range typ.NumField() {
+		if field := typ.Field(i); field.IsExported() {
+			names = append(names, field.Name)
+		}
+	}
+	return names
 }
