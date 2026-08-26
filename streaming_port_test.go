@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -155,9 +156,12 @@ func TestManagedAgentSSEDecodesWireFormat(t *testing.T) {
 			want:  []string{`{"data":"hi","id":"42","retry":5000}`},
 		},
 		{
-			name:  "a retry-only frame still dispatches",
+			// The frame carried no data field, so the output carries no data
+			// key. See TestManagedAgentSSESpecDeviations for why inventing an
+			// empty payload here was wrong.
+			name:  "a retry-only frame dispatches without a synthetic payload",
 			input: "retry: 3000\n\n",
-			want:  []string{`{"data":"","retry":3000}`},
+			want:  []string{`{"retry":3000}`},
 		},
 		{
 			name:  "only one leading space is stripped from a field value",
@@ -197,9 +201,13 @@ func TestManagedAgentSSEDecodesWireFormat(t *testing.T) {
 			want:  []string{`""`},
 		},
 		{
-			name:  "a trailing frame with no blank line is still dispatched at EOF",
+			// Discarded, per the specification: dispatching it would make a
+			// connection cut mid-frame indistinguishable from a clean end,
+			// which is exactly the case a consumer needs to tell apart. See
+			// TestManagedAgentSSESpecDeviations.
+			name:  "a trailing frame with no blank line is discarded at EOF",
 			input: "data: {\"v\":1}",
-			want:  []string{`{"v":1}`},
+			want:  nil,
 		},
 		{
 			// TS: 'skips frames whose data is not valid JSON and continues'.
@@ -304,15 +312,28 @@ func TestManagedAgentSSERejectsNilStreams(t *testing.T) {
 	}
 }
 
-func TestManagedAgentSSERejectsInvalidRetry(t *testing.T) {
+func TestManagedAgentSSEIgnoresInvalidRetry(t *testing.T) {
 	t.Parallel()
 
-	err := renderManagedAgentSSE(io.Discard, strings.NewReader("retry: soon\ndata: {}\n\n"))
-	if err == nil {
-		t.Fatal("renderManagedAgentSSE() error = nil, want an error for a non-numeric retry")
-	}
-	if !strings.Contains(err.Error(), "retry") {
-		t.Errorf("error = %v, want it to name the retry field", err)
+	// The specification says a retry value that is not only ASCII digits is
+	// ignored, not fatal. Aborting instead meant one malformed keep-alive from
+	// a proxy discarded every event that followed it - including the valid
+	// frame already buffered alongside it.
+	for _, input := range []string{
+		"retry: soon\ndata: {\"v\":1}\n\n",
+		"retry: 1.5\ndata: {\"v\":1}\n\n",
+		"retry: -5\ndata: {\"v\":1}\n\n",
+		"retry:\ndata: {\"v\":1}\n\n",
+	} {
+		t.Run(input, func(t *testing.T) {
+			t.Parallel()
+
+			got := sseDecode(t, input)
+			want := []string{`{"v":1}`}
+			if !slices.Equal(got, want) {
+				t.Errorf("decoded lines = %q, want %q - the data frame must survive", got, want)
+			}
+		})
 	}
 }
 
@@ -464,17 +485,58 @@ func TestManagedAgentSSESpecDeviations(t *testing.T) {
 	t.Run("a lone CR terminates a line", func(t *testing.T) {
 		t.Parallel()
 
-		// Spec: streams are split on CRLF, LF, *or* a lone CR. bufio.ScanLines
-		// splits on LF only, so a CR-delimited stream collapses into one line
-		// and is emitted as a single corrupted value — silently, with no error.
-		got := sseDecode(t, "data: a\rdata: b\r\r")
-		want := []string{`"a"`, `"b"`}
-		if slices.Equal(got, want) {
-			return
+		// Spec: streams are split on CRLF, LF, *or* a lone CR. Splitting on LF
+		// alone collapsed a CR-delimited stream into one line, which was then
+		// emitted as a single corrupted value - silently, with no error.
+		//
+		// The original expectation here said "data: a\rdata: b\r\r" should
+		// decode to two events. That was wrong: those two data lines have no
+		// blank line between them, so the specification says they are one
+		// event whose payload is the lines joined with a newline. Asserting it
+		// per spec is what makes the CR case comparable to the LF one below.
+		tests := []struct {
+			name  string
+			input string
+			want  []string
+		}{
+			{
+				name:  "CR-delimited data lines join into one frame",
+				input: "data: a\rdata: b\r\r",
+				want:  []string{`"a\nb"`},
+			},
+			{
+				name:  "a CR blank line dispatches a frame",
+				input: "data: a\r\rdata: b\r\r",
+				want:  []string{`"a"`, `"b"`},
+			},
 		}
-		t.Skipf("not implemented: a lone CR is not treated as a line terminator — "+
-			"%q decoded to %q instead of %q, corrupting the payload rather than failing",
-			"data: a\rdata: b\r\r", got, want)
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				if got := sseDecode(t, tc.input); !slices.Equal(got, tc.want) {
+					t.Errorf("decoded %q to %q, want %q", tc.input, got, tc.want)
+				}
+			})
+		}
+
+		// The three terminators must be interchangeable, or a server that
+		// switches between them changes what the client sees.
+		t.Run("CR, LF and CRLF agree", func(t *testing.T) {
+			t.Parallel()
+
+			want := []string{`"a"`, `"b"`}
+			for _, input := range []string{
+				"data: a\r\rdata: b\r\r",
+				"data: a\n\ndata: b\n\n",
+				"data: a\r\n\r\ndata: b\r\n\r\n",
+			} {
+				if got := sseDecode(t, input); !slices.Equal(got, want) {
+					t.Errorf("decoded %q to %q, want %q", input, got, want)
+				}
+			}
+		})
 	})
 
 	t.Run("a leading byte order mark is stripped", func(t *testing.T) {
@@ -570,25 +632,205 @@ func TestManagedAgentSSESpecDeviations(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TS: 'silently skips event: ping frames'.
+//
+// The NDJSON transcoder passes pings through - a command-line consumer may want
+// to see that the connection is alive. The typed Stream filters them, because a
+// keep-alive is not an event the caller asked for and would decode to a zero
+// value of T.
 func TestManagedAgentSSESkipsPingFrames(t *testing.T) {
-	t.Skip("not implemented: event: ping frames are not filtered — renderManagedAgentSSE " +
-		"transcodes every frame, so a consumer must drop pings itself " +
-		"(see TestManagedAgentSSEDecodesWireFormat for the pass-through behaviour)")
+	t.Parallel()
+
+	type event struct {
+		V int `json:"v"`
+	}
+
+	client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+		return sseResponse(http.StatusOK, strings.Join([]string{
+			"event: ping\ndata: {}\n\n",
+			"data: {\"v\":1}\n\n",
+			"event: ping\n\n",
+			"data: {\"v\":2}\n\n",
+		}, "")), nil
+	})
+
+	stream := StreamEvents[event](context.Background(), client, "/v1/sessions/s1/events/stream")
+	defer stream.Close()
+
+	var got []int
+	for stream.Next() {
+		got = append(got, stream.Current().V)
+	}
+	if err := stream.Err(); err != nil {
+		t.Fatalf("stream error = %v", err)
+	}
+	if want := []int{1, 2}; !slices.Equal(got, want) {
+		t.Errorf("events = %v, want %v", got, want)
+	}
 }
 
 // TS: 'throws an APIError when an event: error frame is received'.
+//
+// A failure the server discovers after the response headers are already sent
+// cannot be expressed as an HTTP status, so it arrives as an error frame.
+// Yielding it as data would leave the consumer unable to tell a broken stream
+// from a complete one.
 func TestManagedAgentSSEErrorFrameRaisesError(t *testing.T) {
-	t.Skip("not implemented: an event: error frame is not mapped to an error — it is " +
-		"transcoded like any other frame, so a stream-level failure is indistinguishable " +
-		"from data unless the caller inspects the NDJSON")
+	t.Parallel()
+
+	type event struct {
+		V int `json:"v"`
+	}
+
+	tests := []struct {
+		name  string
+		frame string
+		want  string
+	}{
+		{
+			name:  "typed error envelope",
+			frame: `event: error` + "\n" + `data: {"error":{"type":"rate_limit_error","message":"slow down"}}` + "\n\n",
+			want:  "slow down",
+		},
+		{
+			name:  "bare message",
+			frame: `event: error` + "\n" + `data: {"message":"upstream gone"}` + "\n\n",
+			want:  "upstream gone",
+		},
+		{
+			name:  "unrecognised payload is passed through",
+			frame: "event: error\ndata: something broke\n\n",
+			want:  "something broke",
+		},
+		{
+			name:  "no payload at all",
+			frame: "event: error\n\n",
+			want:  "no payload",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+				return sseResponse(http.StatusOK, `data: {"v":1}`+"\n\n"+tc.frame+`data: {"v":2}`+"\n\n"), nil
+			})
+
+			stream := StreamEvents[event](context.Background(), client, "/v1/sessions/s1/events/stream")
+			defer stream.Close()
+
+			var got []int
+			for stream.Next() {
+				got = append(got, stream.Current().V)
+			}
+
+			err := stream.Err()
+			if err == nil {
+				t.Fatal("stream error = nil, want the error frame to surface")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("error = %v, want it to carry %q", err, tc.want)
+			}
+			// Events before the failure are still delivered; events after it
+			// are not, because the stream is over.
+			if want := []int{1}; !slices.Equal(got, want) {
+				t.Errorf("events = %v, want %v", got, want)
+			}
+		})
+	}
 }
 
-// TS: 'terminates iteration cleanly when the controller is aborted before reading'
-// and 'break inside the iterator aborts the controller'.
+// TS: 'terminates iteration cleanly when the controller is aborted before
+// reading' and 'break inside the iterator aborts the controller'.
 func TestManagedAgentSSEAbortPropagation(t *testing.T) {
-	t.Skip("not implemented: renderManagedAgentSSE takes no context.Context and offers no " +
-		"cancellation hook — it runs to EOF or to a reader error " +
-		"(see TestManagedAgentSSEPropagatesReaderError for the closest analogue)")
+	t.Parallel()
+
+	type event struct {
+		V int `json:"v"`
+	}
+
+	t.Run("a context cancelled before reading yields nothing", func(t *testing.T) {
+		t.Parallel()
+
+		client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+			return sseResponse(http.StatusOK, `data: {"v":1}`+"\n\n"), nil
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		stream := StreamEvents[event](ctx, client, "/v1/sessions/s1/events/stream")
+		defer stream.Close()
+		cancel()
+
+		if stream.Next() {
+			t.Error("Next() = true on a cancelled context, want false")
+		}
+		if !errors.Is(stream.Err(), context.Canceled) {
+			t.Errorf("Err() = %v, want context.Canceled", stream.Err())
+		}
+	})
+
+	t.Run("breaking out of the loop releases the response", func(t *testing.T) {
+		t.Parallel()
+
+		// A consumer that stops early must not leave the request running. The
+		// body records whether it was closed, since that is the observable
+		// effect - the deadline is released with it.
+		body := &closeTrackingBody{Reader: strings.NewReader(
+			`data: {"v":1}` + "\n\n" + `data: {"v":2}` + "\n\n",
+		)}
+		client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+			res := sseResponse(http.StatusOK, "")
+			res.Body = body
+			return res, nil
+		})
+
+		stream := StreamEvents[event](context.Background(), client, "/v1/sessions/s1/events/stream")
+		for stream.Next() {
+			break
+		}
+		if err := stream.Close(); err != nil {
+			t.Fatalf("Close() error = %v", err)
+		}
+		if !body.closed.Load() {
+			t.Error("response body was not closed, want the abandoned stream to release it")
+		}
+
+		// Close is idempotent: a deferred Close after an explicit one is the
+		// normal shape and must not fail.
+		if err := stream.Close(); err != nil {
+			t.Errorf("second Close() error = %v, want nil", err)
+		}
+	})
+
+	t.Run("a failed request is reported on the stream", func(t *testing.T) {
+		t.Parallel()
+
+		client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+			return jsonResponse(http.StatusNotFound, `{"error":"no such session"}`), nil
+		})
+
+		stream := StreamEvents[event](context.Background(), client, "/v1/sessions/nope/events/stream")
+		defer stream.Close()
+
+		if stream.Next() {
+			t.Error("Next() = true after a failed request, want false")
+		}
+		var notFound *NotFoundError
+		if !errors.As(stream.Err(), &notFound) {
+			t.Errorf("Err() = %T (%v), want *NotFoundError", stream.Err(), stream.Err())
+		}
+	})
+}
+
+// closeTrackingBody records whether the response body was closed.
+type closeTrackingBody struct {
+	io.Reader
+	closed atomic.Bool
+}
+
+func (b *closeTrackingBody) Close() error {
+	b.closed.Store(true)
+	return nil
 }
 
 // TS: 'produces two independent streams that yield the same items'.
