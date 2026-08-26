@@ -103,23 +103,37 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      # The script exits 1 for an incompatible change and 2 when it could not
+      # run at all. Those need different reactions, so the outcome is captured
+      # rather than letting the step just fail: a toolchain problem reported as
+      # a breaking change sends a reviewer looking for a break that is not there.
       - name: Compare exported API against the merge base
         id: compare
-        continue-on-error: true
         run: |
-          set -euo pipefail
+          set -uo pipefail
           base="$(git merge-base HEAD origin/main)"
           ./scripts/detect-breaking-changes "$base"
+          status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
 
-      # A deliberate break is fine; an unnoticed one is not. Acknowledge it by
-      # labelling the PR, which also makes it searchable when cutting a release.
-      - name: Require acknowledgement for breaking changes
-        if: steps.compare.outcome == 'failure'
+      - name: Report the result
         run: |
-          if [ "${{ contains(github.event.pull_request.labels.*.name, 'breaking-change') }}" = "true" ]; then
-            echo "::notice::Exported API changed incompatibly; acknowledged by the breaking-change label."
-            exit 0
-          fi
-          echo "::error::Exported API changed incompatibly. Consumers such as orca-cli will fail to build."
-          echo "::error::If this is intended, add the 'breaking-change' label to this PR."
-          exit 1
+          case "${{ steps.compare.outputs.status }}" in
+            0)
+              echo "::notice::No incompatible changes to the exported API."
+              ;;
+            1)
+              if [ "${{ contains(github.event.pull_request.labels.*.name, 'breaking-change') }}" = "true" ]; then
+                echo "::notice::Exported API changed incompatibly; acknowledged by the breaking-change label."
+                exit 0
+              fi
+              echo "::error::Exported API changed incompatibly. Consumers such as orca-cli will fail to build."
+              echo "::error::If this is intended, add the 'breaking-change' label to this PR."
+              exit 1
+              ;;
+            *)
+              echo "::error::The breaking-change comparison could not run. This is a tooling failure, not a finding."
+              exit 1
+              ;;
+          esac

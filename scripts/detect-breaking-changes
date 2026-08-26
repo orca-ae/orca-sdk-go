@@ -10,10 +10,25 @@
 # Deliberate breaks are expected during a major restructure. This script does
 # not decide policy - it prints what changed so a reviewer can confirm the
 # break was intended and that the release is versioned accordingly.
+#
+# Exit codes are distinct on purpose:
+#
+#   0  the exported API is compatible
+#   1  the exported API changed incompatibly
+#   2  the comparison could not be made
+#
+# A caller must be able to tell "the API broke" from "the tool did not run".
+# Collapsing them means a toolchain problem is reported as a breaking change,
+# which sends a reviewer looking for a break that is not there.
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+
+fail() {
+	echo "$*" >&2
+	exit 2
+}
 
 BASE="${1:-}"
 if [ -z "$BASE" ]; then
@@ -22,9 +37,16 @@ if [ -z "$BASE" ]; then
 	exit 2
 fi
 
-# Pinned so CI and local runs compare with the same tool.
+# Pinned so CI and local runs compare with the same tool. It is built with
+# GOTOOLCHAIN=auto because the tool tracks the Go release cycle and may need a
+# newer toolchain than this module targets; that affects only how the tool is
+# built, never how the SDK is compiled.
 APIDIFF_VERSION="v0.0.0-20260824195058-e88cd73687aa"
-MODULE="$(go list -m)"
+apidiff() {
+	GOTOOLCHAIN=auto go run "golang.org/x/exp/cmd/apidiff@${APIDIFF_VERSION}" "$@"
+}
+
+MODULE="$(go list -m)" || fail "could not determine the module path"
 
 WORKDIR="$(mktemp -d)"
 BASETREE="${WORKDIR}/base"
@@ -35,25 +57,32 @@ cleanup() {
 trap cleanup EXIT
 
 echo "==> Checking out ${BASE}"
-git worktree add --detach "$BASETREE" "$BASE" >/dev/null
+git worktree add --detach "$BASETREE" "$BASE" >/dev/null || fail "could not check out ${BASE}"
 
 # apidiff resolves the module from the working directory, so each snapshot must
 # be written from inside the tree it describes.
 echo "==> Recording base API"
-(cd "$BASETREE" && go run "golang.org/x/exp/cmd/apidiff@${APIDIFF_VERSION}" -m -w "${WORKDIR}/base.api" "$MODULE")
+(cd "$BASETREE" && apidiff -m -w "${WORKDIR}/base.api" "$MODULE") ||
+	fail "could not record the API of ${BASE}"
 
 echo "==> Recording current API"
-go run "golang.org/x/exp/cmd/apidiff@${APIDIFF_VERSION}" -m -w "${WORKDIR}/head.api" "$MODULE"
+apidiff -m -w "${WORKDIR}/head.api" "$MODULE" ||
+	fail "could not record the API of the working tree"
 
 echo "==> Incompatible changes"
-CHANGES="$(go run "golang.org/x/exp/cmd/apidiff@${APIDIFF_VERSION}" -m -incompatible "${WORKDIR}/base.api" "${WORKDIR}/head.api")"
+CHANGES="$(apidiff -m -incompatible "${WORKDIR}/base.api" "${WORKDIR}/head.api")" ||
+	fail "could not compare the two API snapshots"
 
-if [ -z "$CHANGES" ]; then
+# apidiff notes which packages it skipped; those lines are not findings.
+FINDINGS="$(printf '%s\n' "$CHANGES" | grep -v '^Ignoring internal package ' || true)"
+FINDINGS="$(printf '%s\n' "$FINDINGS" | sed '/^[[:space:]]*$/d')"
+
+if [ -z "$FINDINGS" ]; then
 	echo "None."
 	exit 0
 fi
 
-echo "$CHANGES"
+printf '%s\n' "$FINDINGS"
 echo
 echo "The exported API changed incompatibly. If that was intended, make sure the" >&2
 echo "release notes and version bump say so, and that orca-cli is migrated." >&2
