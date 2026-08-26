@@ -63,7 +63,7 @@ MODULE="$(go list -m)"
 				name = order[i]
 				if (done[name]) continue
 				if (methods[name] == "" && ctors[name] == "") continue
-				if ((name ~ /Client$/) != want_client) continue
+				if ((name ~ /Service$/ || name ~ /Client$/ || name ~ /Handle$/) != want_client) continue
 				if (!printed) { print heading; print ""; printed = 1 }
 				print "### " name
 				print ""
@@ -77,8 +77,8 @@ MODULE="$(go list -m)"
 		}
 
 		END {
-			emit_section("## Clients", 1)
-			emit_section("## Types with methods", 0)
+			emit_section("## Services", 1)
+			emit_section("## Types with behaviour", 0)
 
 			if (funcs != "") {
 				print "## Package functions"

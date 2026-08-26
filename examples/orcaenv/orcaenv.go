@@ -4,11 +4,11 @@ package orcaenv
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 	"strings"
 
 	orca "github.com/orca-ae/orca-sdk-go"
+	"github.com/orca-ae/orca-sdk-go/option"
 )
 
 // Client returns a client for the deployment named by ORCA_BASE_URL.
@@ -18,6 +18,9 @@ import (
 // Cloud OIDC token sent as Authorization: Bearer. The server reads x-api-key
 // first and treats it as authoritative whenever present, so supplying both
 // would silently ignore the token - this refuses instead.
+//
+// The SDK would read these variables on its own; they are read here so the
+// error message can say which one is missing.
 func Client() (*orca.Client, error) {
 	baseURL := strings.TrimSpace(os.Getenv("ORCA_BASE_URL"))
 	if baseURL == "" {
@@ -27,14 +30,21 @@ func Client() (*orca.Client, error) {
 	apiKey := strings.TrimSpace(os.Getenv("ORCA_API_KEY"))
 	accessToken := strings.TrimSpace(os.Getenv("ORCA_ACCESS_TOKEN"))
 
+	credential := option.WithoutAuthentication()
 	switch {
 	case apiKey != "" && accessToken != "":
 		return nil, fmt.Errorf("set exactly one of ORCA_API_KEY or ORCA_ACCESS_TOKEN, not both")
 	case apiKey != "":
-		return orca.NewAPIKeyClient(baseURL, apiKey, http.DefaultClient)
+		credential = option.WithAPIKey(apiKey)
 	case accessToken != "":
-		return orca.NewClient(baseURL, accessToken, http.DefaultClient)
+		credential = option.WithAuthToken(accessToken)
 	default:
 		return nil, fmt.Errorf("one of ORCA_API_KEY or ORCA_ACCESS_TOKEN is required")
 	}
+
+	return orca.New(
+		option.WithBaseURL(baseURL),
+		credential,
+		option.WithWarningWriter(os.Stderr),
+	)
 }

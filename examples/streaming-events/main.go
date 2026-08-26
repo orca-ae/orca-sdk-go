@@ -1,21 +1,16 @@
-// Command streaming-events follows a session's event stream and prints each
-// event as one JSON object per line.
+// Command streaming-events follows a session's event stream.
 //
-// The server speaks Server-Sent Events. DecodeSSE transcodes that wire format
-// to NDJSON, which is what makes the output pipeable into jq and friends:
+//	go run ./streaming-events sess_123
 //
-//	go run ./streaming-events sess_123 | jq -c 'select(.type == "message")'
-//
-// GetStream hands the raw body to a callback rather than buffering it, so this
-// prints events as they arrive instead of waiting for the session to finish.
+// Ping frames are filtered by the stream itself, and an error frame ends it
+// through Err rather than arriving as data - so this loop reads only the events
+// the caller actually asked for.
 package main
 
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
-	"net/url"
 	"os"
 
 	orca "github.com/orca-ae/orca-sdk-go"
@@ -34,13 +29,17 @@ func main() {
 		log.Fatal(err)
 	}
 
-	agents := orca.NewManagedAgentsClient(client)
-	path := "v1/sessions/" + url.PathEscape(sessionID) + "/events/stream"
+	stream := client.Sessions.Events.Stream(context.Background(), sessionID,
+		orca.SessionEventStreamParams{})
+	// Closing aborts the request, so breaking out of the loop early does not
+	// leave it running.
+	defer stream.Close()
 
-	err = agents.GetStream(context.Background(), path, "text/event-stream", func(body io.Reader) error {
-		return orca.DecodeSSE(os.Stdout, body)
-	})
-	if err != nil {
+	for stream.Next() {
+		event := stream.Current()
+		fmt.Printf("%s\t%s\n", event.ID, event.Type)
+	}
+	if err := stream.Err(); err != nil {
 		log.Fatalf("streaming session %s: %v", sessionID, err)
 	}
 }

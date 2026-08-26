@@ -1,7 +1,7 @@
 # orca-sdk-go
 
 Go client for the [Orca Agent Engine](https://github.com/orca-ae/orca-managed-agents)
-(OMA) Registry API, plus the StreamNative Cloud extension surface.
+(OMA), plus the StreamNative Cloud extension surface.
 
 ```bash
 go get github.com/orca-ae/orca-sdk-go
@@ -9,73 +9,176 @@ go get github.com/orca-ae/orca-sdk-go
 
 ## Usage
 
-The base URL is the **deployment host root** — no `/v1`, `/v1/registry`, or
-`/api/v1` suffix. A legacy suffix is stripped with a deprecation warning on the
-supplied warning writer.
+```go
+package main
 
-OMA accepts two credential classes, and they are **not interchangeable**:
+import (
+	"context"
+	"fmt"
+	"log"
+	"os"
+
+	orca "github.com/orca-ae/orca-sdk-go"
+	"github.com/orca-ae/orca-sdk-go/option"
+)
+
+func main() {
+	client, err := orca.New(
+		option.WithBaseURL("https://orca.example.com"),
+		option.WithAPIKey(os.Getenv("ORCA_API_KEY")),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	agent, err := client.Agents.Create(context.Background(), orca.AgentNewParams{
+		Model: orca.Model("claude-sonnet-4-6"),
+		Name:  "my-first-agent",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(agent.ID)
+}
+```
+
+`ORCA_BASE_URL` and `ORCA_API_KEY` (or `ORCA_ACCESS_TOKEN`) are read from the
+environment when the matching option is absent, so the same binary can be
+pointed at another deployment without a recompile. An explicit option always
+wins.
+
+### The base URL is the host root
+
+No `/v1`, `/v1/registry`, or `/api/v1` suffix — request paths carry their own
+prefix. A legacy suffix is accepted and stripped, with a deprecation notice on
+the warning writer.
+
+### Credentials
+
+Two credential classes, and they are **not** interchangeable:
 
 ```go
-// StreamNative Cloud OIDC / access token -> Authorization: Bearer
-client, err := orca.NewClient("https://host.example.com", token, nil)
-
-// OMA workspace API key (orca_...) -> x-api-key
-client, err := orca.NewAPIKeyClient("https://host.example.com", apiKey, nil)
+option.WithAPIKey(key)        // OMA workspace API key (orca_...) -> x-api-key
+option.WithAuthToken(token)   // StreamNative Cloud OIDC token    -> Authorization: Bearer
 ```
 
 The server reads `x-api-key` first and treats it as authoritative whenever
-present; Bearer is only consulted when no API key was supplied. Supply exactly
-one.
+present, so supply exactly one. For a credential that rotates, use
+`option.WithAuthTokenProvider` — it is consulted on every attempt, so a token
+that expired mid-call is refreshed rather than replayed.
 
-Cloud extension resources live under `/apis/cloud.sn.io/v1` and exist only on
-deployments that advertise the `cloud.sn.io` group. Check discovery before
-calling them:
+### Options
+
+The same options work per-client and per-call, and a per-call option always
+wins without leaking back onto the shared client:
 
 ```go
-groups, err := client.GetAPIGroups(ctx)
+agent, err := client.Agents.Get(ctx, agentID, orca.AgentGetParams{},
+	option.WithHeader("X-Trace-Id", traceID),
+	option.WithMaxRetries(0),
+)
+```
+
+Requests are retried only where repeating can help — a timeout, conflict, rate
+limit, 5xx, or transport failure — and `Retry-After` is obeyed.
+
+### Pagination
+
+Lists return a cursor. `All` iterates every item across every page, yielding
+the error as part of the iteration so a mid-walk failure cannot be mistaken for
+the end of the data:
+
+```go
+page, err := client.Agents.List(ctx, orca.AgentListParams{})
 if err != nil {
 	return err
 }
-if !groups.HasGroup(orca.CloudExtensionGroup) {
-	return fmt.Errorf("deployment does not serve %s", orca.CloudExtensionGroup)
+for agent, err := range page.All(ctx) {
+	if err != nil {
+		return err
+	}
+	fmt.Println(agent.ID)
 }
-connections, err := orca.NewConnectionsClient(client).List(ctx)
 ```
 
-An **empty** group list is a normal deployment with no extensions installed — it
-is not an error, and it is not the same as a 404 from `/apis` itself, which means
-the deployment predates discovery entirely.
+### Streaming
 
-See [`api.md`](api.md) for the full surface and [`examples/`](examples) for
-runnable samples.
+```go
+stream := client.Sessions.Events.Stream(ctx, sessionID, orca.SessionEventStreamParams{})
+defer stream.Close()
+
+for stream.Next() {
+	event := stream.Current()
+	fmt.Println(event.Type)
+}
+if err := stream.Err(); err != nil {
+	return err
+}
+```
+
+Breaking out of the loop is safe: `Close` aborts the request rather than
+leaving it running.
+
+### Errors
+
+Every failure satisfies `orca.Error`, and each meaningful status has its own
+type wrapping a common `orca.APIError`:
+
+```go
+var notFound *orca.NotFoundError
+if errors.As(err, &notFound) {
+	// the agent is gone
+}
+
+var apiErr *orca.APIError
+if errors.As(err, &apiErr) {
+	log.Printf("status %d, request %s", apiErr.StatusCode, apiErr.RequestID)
+}
+```
+
+### Optional request fields
+
+An optional field means three different things on the wire, and the API acts on
+all three. `param.Opt` carries which one you meant:
+
+```go
+client.Agents.Update(ctx, agentID, orca.AgentUpdateParams{
+	Name:        param.String("new name"),      // set it
+	Description: param.Null[string](),          // clear it
+	// System is absent, so the server leaves it alone
+})
+```
+
+### Cloud extensions
+
+`client.Cloud.*` is served under `/apis/cloud.sn.io/v1` and exists only on
+deployments that advertise the `cloud.sn.io` group. Every call checks first:
+
+```go
+connections, err := client.Cloud.Connections.List(ctx)
+
+var unavailable *orca.ExtensionNotAvailableError
+if errors.As(err, &unavailable) {
+	// this deployment has no connections at all, as opposed to none matching
+}
+```
+
+## Documentation
+
+- [`api.md`](api.md) — every exported symbol, generated from the source.
+- [`docs/surface-status.md`](docs/surface-status.md) — what each surface is for
+  and where the contract has a sharp edge.
+- [`examples/`](examples) — runnable samples.
+- [`AGENTS.md`](AGENTS.md) — conventions for contributing.
 
 ## Development
 
 ```bash
 ./scripts/bootstrap   # dependencies
 ./scripts/format      # gofmt -s -w .
-./scripts/lint        # gofmt check, vet, build, tests compile, examples build
+./scripts/lint        # gofmt, vet, build, tests compile, examples, shell, e2e
 ./scripts/test        # go test ./...
 ```
 
 `go test ./...` runs offline. Tests needing a live deployment gate themselves —
 see [`CONTRIBUTING.md`](CONTRIBUTING.md).
-
-## Status
-
-This SDK is being restructured from the flat client extracted from `orca-cli`
-into a layered one: per-resource services, request options, typed errors,
-pagination, and typed streaming. The Managed Agents surface is currently a
-generic untyped passthrough (`ManagedAgentsClient`); the Cloud extension surface
-is typed.
-
-The test suite ported from
-[`orca-sdk-typescript`](https://github.com/orca-ae/orca-sdk-typescript) already
-specifies the typed surface and skips pending its implementation, so the skip
-count is the remaining work:
-
-```bash
-go test -v ./... 2>&1 | grep -c SKIP
-```
-
-`AGENTS.md` describes the destination and the conventions to follow.
