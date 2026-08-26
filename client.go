@@ -54,6 +54,10 @@ type Client struct {
 	// resources, and threads.
 	Sessions SessionService
 
+	// MemoryStores manages durable stores an agent reads and writes across
+	// sessions, their entries, and the audit trail of changes.
+	MemoryStores MemoryStoreService
+
 	// Cloud is the StreamNative Cloud extension surface. Every call through it
 	// is gated on the deployment advertising the cloud.sn.io group.
 	Cloud CloudService
@@ -67,6 +71,7 @@ func newClientFrom(cfg *requestconfig.RequestConfig, discovery *discoveryCache) 
 	client := &Client{cfg: cfg, discovery: discovery}
 	client.Agents = newAgentService(client)
 	client.Sessions = newSessionService(client)
+	client.MemoryStores = newMemoryStoreService(client)
 	client.Cloud = newCloudService(client)
 	return client
 }
