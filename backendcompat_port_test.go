@@ -241,7 +241,16 @@ func TestSharedBackendCompatibilityTypedResources(t *testing.T) {
 			})
 
 			t.Run("triggers.retrieve", func(t *testing.T) {
-				t.Skip(pendingManagedAgents)
+				trigger, err := client.Triggers.Get(context.Background(), "trigger_abc")
+				if err != nil {
+					t.Fatalf("Triggers.Get() error = %v", err)
+				}
+				if trigger.ID != "trigger_abc" {
+					t.Errorf("id = %q, want %q", trigger.ID, "trigger_abc")
+				}
+				if got, want := transport.Last(t).Path(), "/v1/triggers/trigger_abc"; got != want {
+					t.Errorf("path = %q, want %q", got, want)
+				}
 			})
 		})
 	}

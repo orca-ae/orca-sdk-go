@@ -566,5 +566,85 @@ func TestSmokeDefaultMaxRetries(t *testing.T) {
 // TS: typed resources such as orca.triggers, orca.sessions.files,
 // orca.memoryStores.memories, orca.agents.versions.
 func TestSmokeTypedManagedAgentsResources(t *testing.T) {
-	t.Skip(pendingManagedAgents)
+	t.Parallel()
+
+	// "Mounted" is asserted as something stronger than non-nil: each service is
+	// exercised once and its request must land on the right path. A service
+	// wired to the wrong resource would pass a nil check and fail this.
+	client, transport := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, `{"data":[],"has_more":false}`), nil
+	})
+	ctx := context.Background()
+
+	tests := []struct {
+		name string
+		call func() error
+		path string
+	}{
+		{"agents.list", func() error { _, err := client.Agents.List(ctx, AgentListParams{}); return err }, "/v1/agents"},
+		{"agents.versions.list", func() error {
+			_, err := client.Agents.Versions.List(ctx, "a1", AgentVersionListParams{})
+			return err
+		}, "/v1/agents/a1/versions"},
+		{"sessions.list", func() error { _, err := client.Sessions.List(ctx, SessionListParams{}); return err }, "/v1/sessions"},
+		{"sessions.events.list", func() error {
+			_, err := client.Sessions.Events.List(ctx, "s1", SessionEventListParams{})
+			return err
+		}, "/v1/sessions/s1/events"},
+		{"sessions.files.list", func() error {
+			_, err := client.Sessions.Files.List(ctx, "s1", SessionFileListParams{})
+			return err
+		}, "/v1/sessions/s1/files"},
+		{"sessions.resources.list", func() error {
+			_, err := client.Sessions.Resources.List(ctx, "s1", SessionResourceListParams{})
+			return err
+		}, "/v1/sessions/s1/resources"},
+		{"sessions.threads.list", func() error {
+			_, err := client.Sessions.Threads.List(ctx, "s1", SessionThreadListParams{})
+			return err
+		}, "/v1/sessions/s1/threads"},
+		{"memoryStores.list", func() error {
+			_, err := client.MemoryStores.List(ctx, MemoryStoreListParams{})
+			return err
+		}, "/v1/memory_stores"},
+		{"memoryStores.memories.list", func() error {
+			_, err := client.MemoryStores.Memories.List(ctx, "m1", MemoryListParams{})
+			return err
+		}, "/v1/memory_stores/m1/memories"},
+		{"memoryStores.memoryVersions.list", func() error {
+			_, err := client.MemoryStores.MemoryVersions.List(ctx, "m1", MemoryVersionListParams{})
+			return err
+		}, "/v1/memory_stores/m1/memory_versions"},
+		{"vaults.list", func() error { _, err := client.Vaults.List(ctx, VaultListParams{}); return err }, "/v1/vaults"},
+		{"vaults.credentials.list", func() error {
+			_, err := client.Vaults.Credentials.List(ctx, "v1", CredentialListParams{})
+			return err
+		}, "/v1/vaults/v1/credentials"},
+		{"environments.list", func() error {
+			_, err := client.Environments.List(ctx, EnvironmentListParams{})
+			return err
+		}, "/v1/environments"},
+		{"files.list", func() error { _, err := client.Files.List(ctx, FileListParams{}); return err }, "/v1/files"},
+		{"skills.list", func() error { _, err := client.Skills.List(ctx, SkillListParams{}); return err }, "/v1/skills"},
+		{"skills.versions.list", func() error {
+			_, err := client.Skills.Versions.List(ctx, "s1", SkillVersionListParams{})
+			return err
+		}, "/v1/skills/s1/versions"},
+		{"triggers.list", func() error { _, err := client.Triggers.List(ctx, TriggerListParams{}); return err }, "/v1/triggers"},
+		{"triggers.sessions.list", func() error {
+			_, err := client.Triggers.Sessions.List(ctx, "t1", TriggerSessionListParams{})
+			return err
+		}, "/v1/triggers/t1/sessions"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.call(); err != nil {
+				t.Fatalf("%s error = %v", tc.name, err)
+			}
+			if got := transport.Last(t).Path(); got != tc.path {
+				t.Errorf("%s path = %q, want %q", tc.name, got, tc.path)
+			}
+		})
+	}
 }

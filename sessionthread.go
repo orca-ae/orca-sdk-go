@@ -29,17 +29,17 @@ type SessionThreadStatus string
 
 // SessionThreadStats is how long a thread has been running.
 type SessionThreadStats struct {
-	ActiveSeconds   float64 `json:"active_seconds,omitempty"`
-	DurationSeconds float64 `json:"duration_seconds,omitempty"`
-	StartupSeconds  float64 `json:"startup_seconds,omitempty"`
+	ActiveSeconds   float64 `json:"active_seconds,omitzero"`
+	DurationSeconds float64 `json:"duration_seconds,omitzero"`
+	StartupSeconds  float64 `json:"startup_seconds,omitzero"`
 }
 
 // SessionThreadUsage is the token usage a thread has accumulated.
 type SessionThreadUsage struct {
-	InputTokens          int64               `json:"input_tokens,omitempty"`
-	OutputTokens         int64               `json:"output_tokens,omitempty"`
-	CacheReadInputTokens int64               `json:"cache_read_input_tokens,omitempty"`
-	CacheCreation        *CacheCreationUsage `json:"cache_creation,omitempty"`
+	InputTokens          int64               `json:"input_tokens,omitzero"`
+	OutputTokens         int64               `json:"output_tokens,omitzero"`
+	CacheReadInputTokens int64               `json:"cache_read_input_tokens,omitzero"`
+	CacheCreation        *CacheCreationUsage `json:"cache_creation,omitzero"`
 }
 
 // SessionThread is one thread of execution within a session.

@@ -45,7 +45,7 @@ type VaultDeleted struct {
 // VaultNewParams creates a vault.
 type VaultNewParams struct {
 	DisplayName string            `json:"display_name"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitzero"`
 }
 
 // VaultUpdateParams updates a vault.

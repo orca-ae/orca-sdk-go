@@ -103,9 +103,9 @@ func (m AgentModelParam) MarshalJSON() ([]byte, error) {
 // AgentModel is the model an agent runs on, as the API reports it.
 type AgentModel struct {
 	ID       string       `json:"id"`
-	Provider string       `json:"provider,omitempty"`
-	Speed    ModelSpeed   `json:"speed,omitempty"`
-	Effort   *ModelEffort `json:"effort,omitempty"`
+	Provider string       `json:"provider,omitzero"`
+	Speed    ModelSpeed   `json:"speed,omitzero"`
+	Effort   *ModelEffort `json:"effort,omitzero"`
 }
 
 // ---------------------------------------------------------------------------
@@ -196,8 +196,8 @@ const (
 // AgentCustomToolInputSchema is the JSON Schema for a custom tool's input.
 type AgentCustomToolInputSchema struct {
 	Type       string         `json:"type"`
-	Properties map[string]any `json:"properties,omitempty"`
-	Required   []string       `json:"required,omitempty"`
+	Properties map[string]any `json:"properties,omitzero"`
+	Required   []string       `json:"required,omitzero"`
 	Extra      map[string]any `json:"-"`
 }
 
@@ -223,21 +223,21 @@ type AgentTool struct {
 	Type AgentToolType `json:"type"`
 
 	// MCPServerName names the server, for an mcp_toolset.
-	MCPServerName string `json:"mcp_server_name,omitempty"`
+	MCPServerName string `json:"mcp_server_name,omitzero"`
 
 	// Configs enables and configures individual tools within a toolset. The API
 	// accepts either a name-keyed object or a list of entries carrying their own
 	// name; both decode into this map.
-	Configs map[string]AgentToolConfig `json:"configs,omitempty"`
+	Configs map[string]AgentToolConfig `json:"configs,omitzero"`
 
 	// DefaultConfig applies to tools in the set with no entry in Configs.
 	DefaultConfig param.Opt[AgentToolConfig] `json:"default_config,omitzero"`
 
 	// Name, Description and InputSchema describe a custom tool, and are
 	// required for one.
-	Name        string                      `json:"name,omitempty"`
-	Description string                      `json:"description,omitempty"`
-	InputSchema *AgentCustomToolInputSchema `json:"input_schema,omitempty"`
+	Name        string                      `json:"name,omitzero"`
+	Description string                      `json:"description,omitzero"`
+	InputSchema *AgentCustomToolInputSchema `json:"input_schema,omitzero"`
 
 	// Extra carries provider-specific keys the contract does not enumerate.
 	Extra map[string]any `json:"-"`
@@ -345,7 +345,7 @@ const (
 // that is what an entry carrying only an ID encodes to.
 type AgentRosterEntry struct {
 	Type    AgentRosterEntryType `json:"type"`
-	ID      string               `json:"id,omitempty"`
+	ID      string               `json:"id,omitzero"`
 	Version param.Opt[int64]     `json:"version,omitzero"`
 }
 
@@ -438,10 +438,10 @@ type AgentNewParams struct {
 
 	Description param.Opt[string]          `json:"description,omitzero"`
 	System      param.Opt[string]          `json:"system,omitzero"`
-	McpServers  []AgentMcpServerParam      `json:"mcp_servers,omitempty"`
-	Tools       []AgentTool                `json:"tools,omitempty"`
-	Skills      []AgentSkillParam          `json:"skills,omitempty"`
-	Metadata    map[string]string          `json:"metadata,omitempty"`
+	McpServers  []AgentMcpServerParam      `json:"mcp_servers,omitzero"`
+	Tools       []AgentTool                `json:"tools,omitzero"`
+	Skills      []AgentSkillParam          `json:"skills,omitzero"`
+	Metadata    map[string]string          `json:"metadata,omitzero"`
 	Multiagent  param.Opt[AgentMultiagent] `json:"multiagent,omitzero"`
 }
 
