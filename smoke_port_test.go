@@ -362,11 +362,11 @@ func TestSmokeDefaultHTTPClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient() error = %v", err)
 	}
-	if client.httpClient == nil {
+	if client.cfg.HTTPClient == nil {
 		t.Fatal("httpClient = nil, want a default client")
 	}
-	if client.httpClient.Timeout != defaultHTTPTimeout {
-		t.Errorf("default timeout = %v, want %v", client.httpClient.Timeout, defaultHTTPTimeout)
+	if client.cfg.HTTPClient.Timeout != defaultHTTPTimeout {
+		t.Errorf("default timeout = %v, want %v", client.cfg.HTTPClient.Timeout, defaultHTTPTimeout)
 	}
 }
 

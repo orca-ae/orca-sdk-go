@@ -27,21 +27,22 @@ func NewClient(baseURL, token string, httpClient *http.Client) (*Client, error)
 func NewClientWithWarningWriter(baseURL, token string, httpClient *http.Client, warningWriter io.Writer) (*Client, error)
 func NewUnauthenticatedClient(baseURL string, httpClient *http.Client) (*Client, error)
 func NewUnauthenticatedClientWithWarningWriter(baseURL string, httpClient *http.Client, warningWriter io.Writer) (*Client, error)
-func (c *Client) Delete(ctx context.Context, path string) error
+func (c *Client) Delete(ctx context.Context, path string, opts ...option.RequestOption) error
 func (c *Client) GetAPIGroups(ctx context.Context) (*APIGroupList, error)
 func (c *Client) GetAPIVersions(ctx context.Context) (*APIVersions, error)
 func (c *Client) GetCloudAPIResources(ctx context.Context) (*APIResourceList, error)
 func (c *Client) GetHealthz(ctx context.Context) (*CoreProbeStatus, error)
-func (c *Client) GetJSON(ctx context.Context, path string, out interface{}) error
+func (c *Client) GetJSON(ctx context.Context, path string, out interface{}, opts ...option.RequestOption) error
 func (c *Client) GetReadyz(ctx context.Context) (*CoreProbeStatus, error)
-func (c *Client) GetStream(ctx context.Context, path string, accept string, handle func(io.Reader) error) error
-func (c *Client) GetToWriter(ctx context.Context, path string, writer io.Writer) error
-func (c *Client) PatchJSON(ctx context.Context, path string, body interface{}, out interface{}) error
-func (c *Client) PostJSON(ctx context.Context, path string, body interface{}, out interface{}) error
-func (c *Client) PostMultipart(ctx context.Context, path string, body MultipartRequest) error
-func (c *Client) PostMultipartWithResponse(ctx context.Context, path string, body MultipartRequest) ([]byte, error)
-func (c *Client) PutJSON(ctx context.Context, path string, body interface{}, out interface{}) error
-func (c *Client) PutMultipart(ctx context.Context, path string, body MultipartRequest) error
+func (c *Client) GetStream(
+func (c *Client) GetToWriter(ctx context.Context, path string, writer io.Writer, opts ...option.RequestOption) error
+func (c *Client) PatchJSON(ctx context.Context, path string, body interface{}, out interface{}, opts ...option.RequestOption) error
+func (c *Client) PostJSON(ctx context.Context, path string, body interface{}, out interface{}, opts ...option.RequestOption) error
+func (c *Client) PostMultipart(ctx context.Context, path string, body MultipartRequest, opts ...option.RequestOption) error
+func (c *Client) PostMultipartWithResponse(ctx context.Context, path string, body MultipartRequest, opts ...option.RequestOption) ([]byte, error)
+func (c *Client) PutJSON(ctx context.Context, path string, body interface{}, out interface{}, opts ...option.RequestOption) error
+func (c *Client) PutMultipart(ctx context.Context, path string, body MultipartRequest, opts ...option.RequestOption) error
+func (c *Client) With(opts ...option.RequestOption) (*Client, error)
 func (c *Client) WithDefaultHeader(name, value string) *Client
 func (c *Client) WithPathPrefix(prefix string) *Client
 ```
@@ -227,6 +228,7 @@ func (t *FlexibleTimestamp) UnmarshalJSON(data []byte) error
 
 ```go
 func DecodeSSE(writer io.Writer, reader io.Reader) error
+func New(opts ...option.RequestOption) (*Client, error)
 func ConnectionConfigFromConnection(connection Connection) ConnectionConfig
 func ToConnectionList(configs []ConnectionConfig) ConnectionList
 ```

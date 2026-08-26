@@ -5,13 +5,18 @@ package orca
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/orca-ae/orca-sdk-go/option"
 )
 
 // Ported from orca-sdk-typescript tests/client.test.ts — the request-pipeline
@@ -125,23 +130,52 @@ func TestClientConstructor(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewClient() error = %v", err)
 		}
-		if got := client.httpClient.Timeout; got != defaultHTTPTimeout {
+		if got := client.cfg.HTTPClient.Timeout; got != defaultHTTPTimeout {
 			t.Errorf("default timeout = %v, want %v", got, defaultHTTPTimeout)
 		}
 	})
 
 	t.Run("strips trailing slashes from the base URL", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("not implemented: base URL trailing-slash normalization — " +
-			"a base of https://api.example.test/// resolves /v1/agents to " +
-			"https://api.example.test///v1/agents instead of collapsing the empty segments")
+
+		// Resolution is textual, so a base that keeps its trailing slashes
+		// resolves "v1/agents" to a URL with empty path segments in it. The
+		// server sees a route that does not exist, and the caller sees a 404
+		// with nothing in it to explain why.
+		tests := []struct {
+			name    string
+			baseURL string
+		}{
+			{name: "no trailing slash", baseURL: "https://api.example.test"},
+			{name: "one trailing slash", baseURL: "https://api.example.test/"},
+			{name: "several trailing slashes", baseURL: "https://api.example.test///"},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				transport := &recordingTransport{}
+				client, err := NewClientWithWarningWriter(
+					tc.baseURL, "test-key", &http.Client{Transport: transport}, io.Discard,
+				)
+				if err != nil {
+					t.Fatalf("NewClientWithWarningWriter(%q) error = %v", tc.baseURL, err)
+				}
+
+				var out map[string]any
+				if err := client.GetJSON(context.Background(), "/v1/agents", &out); err != nil {
+					t.Fatalf("GetJSON() error = %v", err)
+				}
+
+				const want = "https://api.example.test/v1/agents"
+				if got := transport.Only(t).URL.String(); got != want {
+					t.Errorf("resolved URL = %q, want %q", got, want)
+				}
+			})
+		}
 	})
 
-	t.Run("falls back to ORCA_BASE_URL and ORCA_API_KEY", func(t *testing.T) {
-		t.Parallel()
-		t.Skip("not implemented: environment-variable fallback for base URL and credential — " +
-			"every constructor takes both explicitly")
-	})
 }
 
 // -----------------------------------------------------------------------
@@ -223,8 +257,65 @@ func TestClientAuthHeader(t *testing.T) {
 
 	t.Run("invokes a credential callback per request", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("not implemented: per-request credential callback — the token is fixed at " +
-			"construction, so a rotating credential requires rebuilding the client")
+
+		// A credential fixed at construction expires while the client is still
+		// alive, and the failure only shows up once the token times out. A
+		// provider is consulted per attempt, so a rotating token is picked up
+		// without rebuilding anything.
+		var calls atomic.Int64
+		transport := &recordingTransport{}
+		client, err := New(
+			option.WithBaseURL(testBaseURL),
+			option.WithHTTPClient(&http.Client{Transport: transport}),
+			option.WithAuthTokenProvider(func(context.Context) (string, error) {
+				return fmt.Sprintf("token-%d", calls.Add(1)), nil
+			}),
+		)
+		if err != nil {
+			t.Fatalf("New() error = %v", err)
+		}
+
+		ctx := context.Background()
+		var out map[string]any
+		for range 3 {
+			if err := client.GetJSON(ctx, "/v1/agents", &out); err != nil {
+				t.Fatalf("GetJSON() error = %v", err)
+			}
+		}
+
+		for i, call := range transport.Calls() {
+			want := fmt.Sprintf("Bearer token-%d", i+1)
+			if got := call.Header.Get("Authorization"); got != want {
+				t.Errorf("call %d Authorization = %q, want %q", i, got, want)
+			}
+		}
+
+		t.Run("a provider failure surfaces instead of sending an unauthenticated request", func(t *testing.T) {
+			t.Parallel()
+
+			transport := &recordingTransport{}
+			client, err := New(
+				option.WithBaseURL(testBaseURL),
+				option.WithHTTPClient(&http.Client{Transport: transport}),
+				option.WithAuthTokenProvider(func(context.Context) (string, error) {
+					return "", errors.New("vault unreachable")
+				}),
+			)
+			if err != nil {
+				t.Fatalf("New() error = %v", err)
+			}
+			var out map[string]any
+			err = client.GetJSON(context.Background(), "/v1/agents", &out)
+			if err == nil {
+				t.Fatal("GetJSON() error = nil, want the provider failure")
+			}
+			if !strings.Contains(err.Error(), "vault unreachable") {
+				t.Errorf("error = %v, want it to carry the provider failure", err)
+			}
+			if got := len(transport.Calls()); got != 0 {
+				t.Errorf("requests sent = %d, want 0 - an unauthenticated request must not go out", got)
+			}
+		})
 	})
 }
 
@@ -336,8 +427,56 @@ func TestClientDefaultHeaders(t *testing.T) {
 
 	t.Run("sets an SDK identification header on every request", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("not implemented: SDK identification headers — no X-Orca-Client and no " +
-			"SDK User-Agent are set, so requests are indistinguishable from any other Go client")
+
+		// Identification is deliberately just the SDK and its version, with the
+		// Go runtime on the User-Agent. No OS, architecture or hostname: naming
+		// the client is enough to pick these requests out of a server log, and
+		// anything more would tell the deployment about the caller's machine
+		// for no benefit to either side.
+		client, transport := newRecordingClient(t, nil)
+
+		var out map[string]any
+		if err := client.GetJSON(context.Background(), "/v1/agents", &out); err != nil {
+			t.Fatalf("GetJSON() error = %v", err)
+		}
+
+		call := transport.Only(t)
+
+		clientHeader := call.Header.Get("X-Orca-Client")
+		if !strings.HasPrefix(clientHeader, "orca-sdk-go/") {
+			t.Errorf("X-Orca-Client = %q, want it to start with %q", clientHeader, "orca-sdk-go/")
+		}
+		userAgent := call.Header.Get("User-Agent")
+		if !strings.HasPrefix(userAgent, "orca-sdk-go/") {
+			t.Errorf("User-Agent = %q, want it to start with %q", userAgent, "orca-sdk-go/")
+		}
+		if !strings.Contains(userAgent, "go1") {
+			t.Errorf("User-Agent = %q, want it to name the Go runtime", userAgent)
+		}
+
+		for _, header := range []string{"X-Orca-Client", "User-Agent"} {
+			value := call.Header.Get(header)
+			for _, leak := range []string{runtime.GOOS, runtime.GOARCH} {
+				if strings.Contains(value, leak) {
+					t.Errorf("%s = %q, want it not to disclose %q", header, value, leak)
+				}
+			}
+		}
+
+		t.Run("a caller can override the User-Agent", func(t *testing.T) {
+			t.Parallel()
+
+			client, transport := newRecordingClient(t, nil)
+			var out map[string]any
+			err := client.GetJSON(context.Background(), "/v1/agents", &out,
+				option.WithHeader("User-Agent", "my-app/1.0"))
+			if err != nil {
+				t.Fatalf("GetJSON() error = %v", err)
+			}
+			if got := transport.Only(t).Header.Get("User-Agent"); got != "my-app/1.0" {
+				t.Errorf("User-Agent = %q, want %q", got, "my-app/1.0")
+			}
+		})
 	})
 }
 
@@ -480,25 +619,23 @@ func TestClientHTTPMethodWrappers(t *testing.T) {
 func TestClientRetryBehaviour(t *testing.T) {
 	t.Parallel()
 
-	t.Run("every failing status is surfaced on the first attempt", func(t *testing.T) {
+	t.Run("a status that cannot improve on retry is surfaced immediately", func(t *testing.T) {
 		t.Parallel()
 
-		// The TS suite splits this into "retries 500", "does NOT retry 401"
-		// and "does NOT retry 400". This client has no retry loop at all, so
-		// the single observable rule is: one request per call, always. That is
-		// worth pinning — a caller wrapping this client in its own retry
-		// policy needs to know no attempts are being made underneath.
+		// A rejected credential or a malformed request is deterministic:
+		// repeating it produces the identical failure, having spent the backoff
+		// and hidden the real error behind a delay.
 		for _, status := range []int{
 			http.StatusBadRequest,
 			http.StatusUnauthorized,
-			http.StatusTooManyRequests,
-			http.StatusInternalServerError,
-			http.StatusServiceUnavailable,
+			http.StatusForbidden,
+			http.StatusNotFound,
+			http.StatusUnprocessableEntity,
 		} {
 			t.Run(http.StatusText(status), func(t *testing.T) {
 				t.Parallel()
 
-				client, transport := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+				client, transport, delays := newRetryingClient(t, 2, func(*http.Request) (*http.Response, error) {
 					return jsonResponse(status, `{"error":"boom"}`), nil
 				})
 
@@ -515,26 +652,229 @@ func TestClientRetryBehaviour(t *testing.T) {
 				if got := len(transport.Calls()); got != 1 {
 					t.Errorf("requests sent = %d, want exactly 1 (no retries)", got)
 				}
+				if got := len(*delays); got != 0 {
+					t.Errorf("backoff waits = %d, want 0", got)
+				}
 			})
+		}
+	})
+
+	t.Run("the legacy constructors do not retry", func(t *testing.T) {
+		t.Parallel()
+
+		// Callers built against these predate any retry policy. Silently
+		// starting to repeat their mutations would change what their existing
+		// code does to the server, so retries are opt-in through New.
+		client, transport := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+			return jsonResponse(http.StatusInternalServerError, `{"error":"boom"}`), nil
+		})
+
+		var out map[string]any
+		if err := client.GetJSON(context.Background(), "/v1/agents", &out); err == nil {
+			t.Fatal("GetJSON() error = nil, want a failure")
+		}
+		if got := len(transport.Calls()); got != 1 {
+			t.Errorf("requests sent = %d, want exactly 1", got)
 		}
 	})
 
 	t.Run("retries a 500 up to maxRetries", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("not implemented: retry policy — there is no maxRetries option and no retry loop, " +
-			"so a 5xx is surfaced after a single attempt")
+
+		t.Run("gives up after maxRetries and returns the last failure", func(t *testing.T) {
+			t.Parallel()
+
+			client, transport, delays := newRetryingClient(t, 2, func(*http.Request) (*http.Response, error) {
+				return jsonResponse(http.StatusInternalServerError, `{"error":"boom"}`), nil
+			})
+
+			var out map[string]any
+			err := client.GetJSON(context.Background(), "/v1/agents", &out)
+
+			var httpErr *HTTPError
+			if !errors.As(err, &httpErr) {
+				t.Fatalf("GetJSON() error = %v, want *HTTPError", err)
+			}
+			// maxRetries counts attempts after the first, so 2 means 3 total.
+			if got := len(transport.Calls()); got != 3 {
+				t.Errorf("requests sent = %d, want 3 (the first attempt plus 2 retries)", got)
+			}
+			if got := len(*delays); got != 2 {
+				t.Errorf("backoff waits = %d, want 2", got)
+			}
+			// Each wait is longer than the last, so a deployment that is down
+			// is not hammered at a fixed rate.
+			if len(*delays) == 2 && (*delays)[1] <= (*delays)[0] {
+				t.Errorf("delays = %v, want the backoff to grow", *delays)
+			}
+		})
+
+		t.Run("stops as soon as an attempt succeeds", func(t *testing.T) {
+			t.Parallel()
+
+			var attempts atomic.Int64
+			client, transport, _ := newRetryingClient(t, 5, func(*http.Request) (*http.Response, error) {
+				if attempts.Add(1) < 3 {
+					return jsonResponse(http.StatusServiceUnavailable, `{}`), nil
+				}
+				return jsonResponse(http.StatusOK, `{"id":"agent-1"}`), nil
+			})
+
+			var out struct {
+				ID string `json:"id"`
+			}
+			if err := client.GetJSON(context.Background(), "/v1/agents/a1", &out); err != nil {
+				t.Fatalf("GetJSON() error = %v", err)
+			}
+			if out.ID != "agent-1" {
+				t.Errorf("id = %q, want %q", out.ID, "agent-1")
+			}
+			if got := len(transport.Calls()); got != 3 {
+				t.Errorf("requests sent = %d, want 3", got)
+			}
+		})
+
+		t.Run("retries a transport failure", func(t *testing.T) {
+			t.Parallel()
+
+			client, transport, _ := newRetryingClient(t, 2, func(*http.Request) (*http.Response, error) {
+				return nil, errors.New("dial tcp: connection refused")
+			})
+
+			var out map[string]any
+			err := client.GetJSON(context.Background(), "/v1/agents", &out)
+
+			var connErr *ConnectionError
+			if !errors.As(err, &connErr) {
+				t.Fatalf("GetJSON() error = %T, want *ConnectionError", err)
+			}
+			if got := len(transport.Calls()); got != 3 {
+				t.Errorf("requests sent = %d, want 3", got)
+			}
+		})
+
+		t.Run("records the attempt number on each request", func(t *testing.T) {
+			t.Parallel()
+
+			client, transport, _ := newRetryingClient(t, 2, func(*http.Request) (*http.Response, error) {
+				return jsonResponse(http.StatusInternalServerError, `{}`), nil
+			})
+
+			var out map[string]any
+			_ = client.GetJSON(context.Background(), "/v1/agents", &out)
+
+			for i, call := range transport.Calls() {
+				want := strconv.Itoa(i)
+				if got := call.Header.Get("X-Orca-Retry-Count"); got != want {
+					t.Errorf("call %d X-Orca-Retry-Count = %q, want %q", i, got, want)
+				}
+			}
+		})
+
+		t.Run("a retried body is sent again in full", func(t *testing.T) {
+			t.Parallel()
+
+			// The body reader is consumed by the first attempt, so a retry that
+			// reused it would send an empty body - a silent, data-losing bug
+			// that only shows up under failure.
+			client, transport, _ := newRetryingClient(t, 1, func(*http.Request) (*http.Response, error) {
+				return jsonResponse(http.StatusInternalServerError, `{}`), nil
+			})
+
+			var out map[string]any
+			_ = client.PostJSON(context.Background(), "/v1/agents", map[string]string{"name": "demo"}, &out)
+
+			calls := transport.Calls()
+			if len(calls) != 2 {
+				t.Fatalf("captured %d requests, want 2", len(calls))
+			}
+			for i, call := range calls {
+				if got, want := string(call.Body), `{"name":"demo"}`; got != want {
+					t.Errorf("call %d body = %q, want %q", i, got, want)
+				}
+			}
+		})
 	})
 
 	t.Run("retries a 429 honouring the retry-after-ms header", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("not implemented: Retry-After / retry-after-ms handling — response headers are " +
-			"not inspected and no backoff is performed")
+
+		// A server that says how long to wait is obeyed. Guessing a backoff
+		// when the answer was in the response is how a client turns rate
+		// limiting into an outage.
+		tests := []struct {
+			name   string
+			header string
+			value  string
+			want   time.Duration
+		}{
+			{name: "retry-after-ms", header: "retry-after-ms", value: "1500", want: 1500 * time.Millisecond},
+			{name: "Retry-After seconds", header: "Retry-After", value: "2", want: 2 * time.Second},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				var attempts atomic.Int64
+				client, _, delays := newRetryingClient(t, 1, func(*http.Request) (*http.Response, error) {
+					if attempts.Add(1) == 1 {
+						res := jsonResponse(http.StatusTooManyRequests, `{}`)
+						res.Header.Set(tc.header, tc.value)
+						return res, nil
+					}
+					return jsonResponse(http.StatusOK, `{}`), nil
+				})
+
+				var out map[string]any
+				if err := client.GetJSON(context.Background(), "/v1/agents", &out); err != nil {
+					t.Fatalf("GetJSON() error = %v", err)
+				}
+				if len(*delays) != 1 {
+					t.Fatalf("backoff waits = %d, want 1", len(*delays))
+				}
+				if (*delays)[0] != tc.want {
+					t.Errorf("delay = %v, want %v (the value the server asked for)", (*delays)[0], tc.want)
+				}
+			})
+		}
 	})
 
 	t.Run("honours x-should-retry response overrides", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("not implemented: x-should-retry override — with no retry loop there is nothing " +
-			"for the server to override")
+
+		// A deployment knows things about its own failure modes that a status
+		// code cannot express, so it can mark a normally-terminal status as
+		// transient, or a normally-transient one as final.
+		tests := []struct {
+			name        string
+			status      int
+			shouldRetry string
+			wantCalls   int
+		}{
+			{name: "a 400 marked retryable is retried", status: http.StatusBadRequest, shouldRetry: "true", wantCalls: 2},
+			{name: "a 500 marked terminal is not", status: http.StatusInternalServerError, shouldRetry: "false", wantCalls: 1},
+			{name: "an unrecognised value falls back to the status", status: http.StatusInternalServerError, shouldRetry: "maybe", wantCalls: 2},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				client, transport, _ := newRetryingClient(t, 1, func(*http.Request) (*http.Response, error) {
+					res := jsonResponse(tc.status, `{}`)
+					res.Header.Set("x-should-retry", tc.shouldRetry)
+					return res, nil
+				})
+
+				var out map[string]any
+				_ = client.GetJSON(context.Background(), "/v1/agents", &out)
+
+				if got := len(transport.Calls()); got != tc.wantCalls {
+					t.Errorf("requests sent = %d, want %d", got, tc.wantCalls)
+				}
+			})
+		}
 	})
 }
 
@@ -760,14 +1100,80 @@ func TestClientBuildURL(t *testing.T) {
 
 	t.Run("merges a client-level defaultQuery into every request", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("not implemented: defaultQuery — there is no client-level query option, so a " +
-			"workspace-scoping parameter has to be appended to every path by the caller")
+
+		// A workspace or tenant selector has to ride on every call. Without a
+		// client-level default, every resource method would have to remember to
+		// append it, and the one that forgets reads another tenant's data.
+		client, transport := newRecordingClientWith(t, nil, option.WithQuery("workspace", "ws-1"))
+
+		var out map[string]any
+		if err := client.GetJSON(context.Background(), "/v1/agents", &out); err != nil {
+			t.Fatalf("GetJSON() error = %v", err)
+		}
+		if got := transport.Only(t).Query().Get("workspace"); got != "ws-1" {
+			t.Errorf("workspace = %q, want %q", got, "ws-1")
+		}
+	})
+
+	t.Run("a default query merges with a query the path already carries", func(t *testing.T) {
+		t.Parallel()
+
+		client, transport := newRecordingClientWith(t, nil, option.WithQuery("workspace", "ws-1"))
+
+		var out map[string]any
+		if err := client.GetJSON(context.Background(), "/v1/agents?limit=10", &out); err != nil {
+			t.Fatalf("GetJSON() error = %v", err)
+		}
+		query := transport.Only(t).Query()
+		if got := query.Get("workspace"); got != "ws-1" {
+			t.Errorf("workspace = %q, want %q", got, "ws-1")
+		}
+		if got := query.Get("limit"); got != "10" {
+			t.Errorf("limit = %q, want %q", got, "10")
+		}
 	})
 
 	t.Run("a per-request query overrides the defaultQuery", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("not implemented: structured per-request query parameters — paths carry their " +
-			"own query string, so there is nothing to merge or override")
+
+		client, transport := newRecordingClientWith(t, nil, option.WithQuery("workspace", "ws-1"))
+
+		var out map[string]any
+		err := client.GetJSON(context.Background(), "/v1/agents", &out,
+			option.WithQuery("workspace", "ws-override"))
+		if err != nil {
+			t.Fatalf("GetJSON() error = %v", err)
+		}
+		query := transport.Only(t).Query()
+		if got := query["workspace"]; len(got) != 1 || got[0] != "ws-override" {
+			t.Errorf("workspace = %v, want exactly [ws-override] - the default must be replaced, not appended", got)
+		}
+	})
+
+	t.Run("a per-request option does not leak onto the client", func(t *testing.T) {
+		t.Parallel()
+
+		// Per-call options are the reason a client is safe to share. If one
+		// call's option mutated the client, a concurrent call would silently
+		// inherit it.
+		client, transport := newRecordingClientWith(t, nil, option.WithQuery("workspace", "ws-1"))
+
+		ctx := context.Background()
+		var out map[string]any
+		if err := client.GetJSON(ctx, "/v1/agents", &out, option.WithQuery("workspace", "ws-override")); err != nil {
+			t.Fatalf("GetJSON() error = %v", err)
+		}
+		if err := client.GetJSON(ctx, "/v1/agents", &out); err != nil {
+			t.Fatalf("GetJSON() error = %v", err)
+		}
+
+		calls := transport.Calls()
+		if len(calls) != 2 {
+			t.Fatalf("captured %d requests, want 2", len(calls))
+		}
+		if got := calls[1].Query().Get("workspace"); got != "ws-1" {
+			t.Errorf("second call workspace = %q, want the client default %q", got, "ws-1")
+		}
 	})
 }
 
@@ -780,13 +1186,64 @@ func TestClientIdempotencyKey(t *testing.T) {
 
 	t.Run("sets Idempotency-Key on a mutating request when supplied", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("not implemented: per-request idempotency key — no request option carries one")
+
+		// A key identifies one logical operation, so it belongs on the call
+		// rather than the client - a client-wide key would make every mutation
+		// look like a replay of the same one.
+		for _, tc := range []struct {
+			method string
+			call   func(*Client) error
+		}{
+			{http.MethodPost, func(c *Client) error {
+				var out map[string]any
+				return c.PostJSON(context.Background(), "/v1/agents", map[string]string{"name": "a"}, &out,
+					option.WithIdempotencyKey("idem-123"))
+			}},
+			{http.MethodPut, func(c *Client) error {
+				var out map[string]any
+				return c.PutJSON(context.Background(), "/v1/agents/a1", map[string]string{"name": "a"}, &out,
+					option.WithIdempotencyKey("idem-123"))
+			}},
+			{http.MethodPatch, func(c *Client) error {
+				var out map[string]any
+				return c.PatchJSON(context.Background(), "/v1/agents/a1", map[string]string{"name": "a"}, &out,
+					option.WithIdempotencyKey("idem-123"))
+			}},
+			{http.MethodDelete, func(c *Client) error {
+				return c.Delete(context.Background(), "/v1/agents/a1", option.WithIdempotencyKey("idem-123"))
+			}},
+		} {
+			t.Run(tc.method, func(t *testing.T) {
+				t.Parallel()
+
+				client, transport := newRecordingClient(t, nil)
+				if err := tc.call(client); err != nil {
+					t.Fatalf("%s error = %v", tc.method, err)
+				}
+				if got := transport.Only(t).Header.Get("Idempotency-Key"); got != "idem-123" {
+					t.Errorf("Idempotency-Key = %q, want %q", got, "idem-123")
+				}
+			})
+		}
 	})
 
 	t.Run("does not set Idempotency-Key on GET", func(t *testing.T) {
 		t.Parallel()
-		t.Skip("not implemented: per-request idempotency key — see below for why the " +
-			"WithDefaultHeader workaround is not a substitute")
+
+		// Replaying a read is already safe, so a key on a GET would ask the
+		// server to deduplicate something that never needed it - and would
+		// pin the caller to a cached answer if the server obliged.
+		client, transport := newRecordingClient(t, nil)
+
+		var out map[string]any
+		err := client.GetJSON(context.Background(), "/v1/agents", &out,
+			option.WithIdempotencyKey("idem-123"))
+		if err != nil {
+			t.Fatalf("GetJSON() error = %v", err)
+		}
+		if got := transport.Only(t).Header.Get("Idempotency-Key"); got != "" {
+			t.Errorf("Idempotency-Key = %q, want it unset on a read", got)
+		}
 	})
 
 	t.Run("the default-header workaround also stamps the key onto reads", func(t *testing.T) {
@@ -932,6 +1389,53 @@ func TestClientURLConstructionCoreVsExtension(t *testing.T) {
 		want := "https://workspace.example.com/apis/cloud.sn.io/v1/connections"
 		if got := requestURL(t, scoped, transport, "/connections"); got != want {
 			t.Errorf("request URL = %q, want %q", got, want)
+		}
+	})
+}
+
+// TestClientEnvironmentFallback is deliberately a top-level, non-parallel test:
+// t.Setenv panics under a parallel ancestor, because the environment is
+// process-wide and a sibling could observe a value meant for this test alone.
+func TestClientEnvironmentFallback(t *testing.T) {
+	// Reading the deployment from the environment is what lets one binary
+	// be pointed at dev, staging and production without a recompile.
+	t.Setenv("ORCA_BASE_URL", testBaseURL)
+	t.Setenv("ORCA_API_KEY", "orca_from_env")
+
+	transport := &recordingTransport{}
+	client, err := New(option.WithHTTPClient(&http.Client{Transport: transport}))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	var out map[string]any
+	if err := client.GetJSON(context.Background(), "/v1/agents", &out); err != nil {
+		t.Fatalf("GetJSON() error = %v", err)
+	}
+
+	call := transport.Only(t)
+	if got := call.Header.Get("x-api-key"); got != "orca_from_env" {
+		t.Errorf("x-api-key = %q, want %q", got, "orca_from_env")
+	}
+	if want := testBaseURL + "/v1/agents"; call.URL.String() != want {
+		t.Errorf("URL = %q, want %q", call.URL.String(), want)
+	}
+
+	t.Run("an explicit option beats the environment", func(t *testing.T) {
+		transport := &recordingTransport{}
+		client, err := New(
+			option.WithHTTPClient(&http.Client{Transport: transport}),
+			option.WithAPIKey("orca_explicit"),
+		)
+		if err != nil {
+			t.Fatalf("New() error = %v", err)
+		}
+		var out map[string]any
+		if err := client.GetJSON(context.Background(), "/v1/agents", &out); err != nil {
+			t.Fatalf("GetJSON() error = %v", err)
+		}
+		if got := transport.Only(t).Header.Get("x-api-key"); got != "orca_explicit" {
+			t.Errorf("x-api-key = %q, want the explicit option to win", got)
 		}
 	})
 }
