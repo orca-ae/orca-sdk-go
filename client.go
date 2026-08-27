@@ -544,6 +544,11 @@ func (c *Client) doJSON(
 	if err != nil {
 		return apierror.Errorf("failed to read %s %s response: %w", method, endpoint, err)
 	}
+	// Captured before the status check so a caller can see what a failing
+	// deployment actually said, not only what this SDK made of it.
+	if cfg.RawBody != nil {
+		*cfg.RawBody = responseBytes
+	}
 
 	if !isSuccess(resp.StatusCode) {
 		return apierror.FromResponse(method, endpoint, resp.StatusCode, string(responseBytes), resp.Header)

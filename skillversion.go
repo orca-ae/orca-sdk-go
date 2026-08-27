@@ -4,6 +4,7 @@ package orca
 
 import (
 	"context"
+	"io"
 	"net/url"
 
 	"github.com/orca-ae/orca-sdk-go/internal/apierror"
@@ -86,6 +87,18 @@ func (s SkillVersionService) Get(ctx context.Context, skillID, version string, o
 		return nil, err
 	}
 	return &skillVersion, nil
+}
+
+// Download streams a version's bundle to writer as a zip archive.
+//
+// A published version is immutable, so the bytes are the same every time and
+// safe to cache by (skill, version).
+func (s SkillVersionService) Download(ctx context.Context, skillID, version string, writer io.Writer, opts ...option.RequestOption) error {
+	path := "v1/skills/" + url.PathEscape(skillID) + "/versions/" + url.PathEscape(version) + "/content"
+	return s.client.GetStream(ctx, path, "application/zip", func(body io.Reader) error {
+		_, err := io.Copy(writer, body)
+		return err
+	}, opts...)
 }
 
 // Delete permanently deletes a version and returns its tombstone.

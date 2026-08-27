@@ -72,6 +72,17 @@ func newCloudService(client *Client) CloudService {
 	}
 }
 
+// EnsureAvailable reports whether this deployment serves the cloud extension,
+// returning [ExtensionNotAvailableError] when it does not.
+//
+// Every operation in this tree already checks, so calling it is never required.
+// It exists for callers that want to fail early rather than partway through -
+// a command-line tool checking before it starts work, say - and it shares the
+// same cached probe, so asking first costs no extra round trip.
+func (s CloudService) EnsureAvailable(ctx context.Context, opts ...option.RequestOption) error {
+	return s.client.ensureCloudExtension(ctx, opts...)
+}
+
 // CloudAgentService groups the cloud agent operations.
 type CloudAgentService struct {
 	// Providers lists the agent providers registered on the deployment.

@@ -140,6 +140,13 @@ type RequestConfig struct {
 	// can be asserted without spending the backoff.
 	Sleep func(ctx context.Context, d time.Duration) error
 
+	// RawBody, when set, receives the response body exactly as the server sent
+	// it. A decoded value is shaped by whatever this SDK models, so a caller
+	// that has to reproduce the response - rendering it, forwarding it, storing
+	// it - cannot use one without silently dropping any field the types do not
+	// declare. This hands back the bytes themselves.
+	RawBody *[]byte
+
 	// pendingWarnings holds diagnostics raised while options were still being
 	// applied. They are buffered rather than written immediately because
 	// WithWarningWriter may not have run yet - otherwise whether a deprecation
