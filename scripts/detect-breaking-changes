@@ -73,8 +73,19 @@ echo "==> Incompatible changes"
 CHANGES="$(apidiff -m -incompatible "${WORKDIR}/base.api" "${WORKDIR}/head.api")" ||
 	fail "could not compare the two API snapshots"
 
-# apidiff notes which packages it skipped; those lines are not findings.
-FINDINGS="$(printf '%s\n' "$CHANGES" | grep -v '^Ignoring internal package ' || true)"
+# Lines that are not findings:
+#
+#   - "Ignoring internal package ..." is apidiff reporting what it skipped.
+#   - The version constant changing value. apidiff is right that a consumer
+#     could embed it in a constant expression, but a version constant exists in
+#     order to change on every release. Treating that as a break would put the
+#     breaking-change label on every release and teach everyone to apply it
+#     without reading, which costs more than the case it guards against.
+#     Narrow on purpose: only this symbol, and only a value change. Its type or
+#     removal would still be reported.
+FINDINGS="$(printf '%s\n' "$CHANGES" |
+	grep -v '^Ignoring internal package ' |
+	grep -vE '^- Version: value changed from "[^"]*" to "[^"]*"$' || true)"
 FINDINGS="$(printf '%s\n' "$FINDINGS" | sed '/^[[:space:]]*$/d')"
 
 if [ -z "$FINDINGS" ]; then
