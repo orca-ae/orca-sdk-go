@@ -53,7 +53,7 @@ type MemoryStoreDeleted struct {
 type MemoryStoreNewParams struct {
 	Name        string            `json:"name"`
 	Description param.Opt[string] `json:"description,omitzero"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitzero"`
 }
 
 // MemoryStoreUpdateParams updates a memory store.

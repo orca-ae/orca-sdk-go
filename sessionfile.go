@@ -25,12 +25,12 @@ type SessionFileService struct {
 // SessionFile is a file attached to a session.
 type SessionFile struct {
 	ID        string `json:"id"`
-	Type      string `json:"type,omitempty"`
-	SessionID string `json:"session_id,omitempty"`
-	Filename  string `json:"filename,omitempty"`
-	MimeType  string `json:"mime_type,omitempty"`
-	SizeBytes int64  `json:"size_bytes,omitempty"`
-	CreatedAt string `json:"created_at,omitempty"`
+	Type      string `json:"type,omitzero"`
+	SessionID string `json:"session_id,omitzero"`
+	Filename  string `json:"filename,omitzero"`
+	MimeType  string `json:"mime_type,omitzero"`
+	SizeBytes int64  `json:"size_bytes,omitzero"`
+	CreatedAt string `json:"created_at,omitzero"`
 }
 
 // SessionFileDeleted is the tombstone a delete returns.

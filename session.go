@@ -60,22 +60,22 @@ const (
 
 // SessionStats is how long a session has been running.
 type SessionStats struct {
-	ActiveSeconds   float64 `json:"active_seconds,omitempty"`
-	DurationSeconds float64 `json:"duration_seconds,omitempty"`
+	ActiveSeconds   float64 `json:"active_seconds,omitzero"`
+	DurationSeconds float64 `json:"duration_seconds,omitzero"`
 }
 
 // CacheCreationUsage breaks prompt-cache writes down by time to live.
 type CacheCreationUsage struct {
-	Ephemeral1hInputTokens int64 `json:"ephemeral_1h_input_tokens,omitempty"`
-	Ephemeral5mInputTokens int64 `json:"ephemeral_5m_input_tokens,omitempty"`
+	Ephemeral1hInputTokens int64 `json:"ephemeral_1h_input_tokens,omitzero"`
+	Ephemeral5mInputTokens int64 `json:"ephemeral_5m_input_tokens,omitzero"`
 }
 
 // SessionUsage is the token usage a session has accumulated.
 type SessionUsage struct {
-	InputTokens          int64               `json:"input_tokens,omitempty"`
-	OutputTokens         int64               `json:"output_tokens,omitempty"`
-	CacheReadInputTokens int64               `json:"cache_read_input_tokens,omitempty"`
-	CacheCreation        *CacheCreationUsage `json:"cache_creation,omitempty"`
+	InputTokens          int64               `json:"input_tokens,omitzero"`
+	OutputTokens         int64               `json:"output_tokens,omitzero"`
+	CacheReadInputTokens int64               `json:"cache_read_input_tokens,omitzero"`
+	CacheCreation        *CacheCreationUsage `json:"cache_creation,omitzero"`
 }
 
 // SessionTiming is when a session ran.
@@ -108,15 +108,15 @@ func (e *OutcomeEvaluation) UnmarshalJSON(data []byte) error {
 
 // SessionAgentMember is one agent participating in a session.
 type SessionAgentMember struct {
-	ID       string            `json:"id,omitempty"`
-	Type     string            `json:"type,omitempty"`
-	Version  int64             `json:"version,omitempty"`
-	Name     string            `json:"name,omitempty"`
-	Model    *AgentModel       `json:"model,omitempty"`
-	System   *string           `json:"system,omitempty"`
-	Tools    []AgentTool       `json:"tools,omitempty"`
-	Skills   []AgentSkill      `json:"skills,omitempty"`
-	Metadata map[string]string `json:"metadata,omitempty"`
+	ID       string            `json:"id,omitzero"`
+	Type     string            `json:"type,omitzero"`
+	Version  int64             `json:"version,omitzero"`
+	Name     string            `json:"name,omitzero"`
+	Model    *AgentModel       `json:"model,omitzero"`
+	System   *string           `json:"system,omitzero"`
+	Tools    []AgentTool       `json:"tools,omitzero"`
+	Skills   []AgentSkill      `json:"skills,omitzero"`
+	Metadata map[string]string `json:"metadata,omitzero"`
 }
 
 // SessionAgentMultiagent is the roster a coordinator session runs.
@@ -147,10 +147,10 @@ type Session struct {
 	Title *string `json:"title"`
 
 	Stats  SessionStats   `json:"stats"`
-	Timing *SessionTiming `json:"timing,omitempty"`
+	Timing *SessionTiming `json:"timing,omitzero"`
 	Usage  SessionUsage   `json:"usage"`
 
-	DeploymentID *string `json:"deployment_id,omitempty"`
+	DeploymentID *string `json:"deployment_id,omitzero"`
 
 	// OutcomeEvaluations and Resources are required arrays: the API sends an
 	// empty array rather than omitting them.
@@ -196,18 +196,18 @@ const (
 type SessionAgentParam struct {
 	// Type is required for the object form and must be omitted for the
 	// shorthand.
-	Type SessionAgentRefType `json:"type,omitempty"`
+	Type SessionAgentRefType `json:"type,omitzero"`
 
-	ID      string           `json:"id,omitempty"`
+	ID      string           `json:"id,omitzero"`
 	Version param.Opt[int64] `json:"version,omitzero"`
 
 	// Overrides, valid only with SessionAgentRefWithOverrides. They are
 	// forwarded verbatim; nothing here rewrites them per backend.
 	System     param.Opt[string]     `json:"system,omitzero"`
 	Model      AgentModelParam       `json:"model,omitzero"`
-	Tools      []AgentTool           `json:"tools,omitempty"`
-	McpServers []AgentMcpServerParam `json:"mcp_servers,omitempty"`
-	Skills     []AgentSkillParam     `json:"skills,omitempty"`
+	Tools      []AgentTool           `json:"tools,omitzero"`
+	McpServers []AgentMcpServerParam `json:"mcp_servers,omitzero"`
+	Skills     []AgentSkillParam     `json:"skills,omitzero"`
 
 	Extra map[string]any `json:"-"`
 }
@@ -240,9 +240,9 @@ func (p SessionAgentParam) MarshalJSON() ([]byte, error) {
 type SessionAgentOverridesParam struct {
 	System     param.Opt[string]     `json:"system,omitzero"`
 	Model      AgentModelParam       `json:"model,omitzero"`
-	Tools      []AgentTool           `json:"tools,omitempty"`
-	McpServers []AgentMcpServerParam `json:"mcp_servers,omitempty"`
-	Skills     []AgentSkillParam     `json:"skills,omitempty"`
+	Tools      []AgentTool           `json:"tools,omitzero"`
+	McpServers []AgentMcpServerParam `json:"mcp_servers,omitzero"`
+	Skills     []AgentSkillParam     `json:"skills,omitzero"`
 	Extra      map[string]any        `json:"-"`
 }
 
@@ -275,14 +275,14 @@ type SessionNewParams struct {
 
 	EnvironmentID string `json:"environment_id"`
 
-	VaultIDs  []string               `json:"vault_ids,omitempty"`
+	VaultIDs  []string               `json:"vault_ids,omitzero"`
 	Title     param.Opt[string]      `json:"title,omitzero"`
-	Metadata  map[string]string      `json:"metadata,omitempty"`
-	Resources []SessionResourceParam `json:"resources,omitempty"`
+	Metadata  map[string]string      `json:"metadata,omitzero"`
+	Resources []SessionResourceParam `json:"resources,omitzero"`
 
 	// InitialEvents seeds the session, so it starts with a prompt already in
 	// place rather than needing a follow-up send.
-	InitialEvents []SessionEventParam `json:"initial_events,omitempty"`
+	InitialEvents []SessionEventParam `json:"initial_events,omitzero"`
 }
 
 // SessionUpdateParams updates a session's mutable fields.
@@ -292,7 +292,7 @@ type SessionUpdateParams struct {
 	// Agent carries overrides only - see [SessionAgentOverridesParam].
 	Agent SessionAgentOverridesParam `json:"agent,omitzero"`
 
-	VaultIDs []string `json:"vault_ids,omitempty"`
+	VaultIDs []string `json:"vault_ids,omitzero"`
 
 	// Metadata patches individual keys. A nil value removes its key; a null
 	// Metadata clears the whole map.

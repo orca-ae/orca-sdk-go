@@ -39,8 +39,8 @@ const (
 type SessionResourceCheckout struct {
 	// Type is "branch" or "commit".
 	Type string `json:"type"`
-	Name string `json:"name,omitempty"`
-	SHA  string `json:"sha,omitempty"`
+	Name string `json:"name,omitzero"`
+	SHA  string `json:"sha,omitzero"`
 }
 
 // Branch returns a checkout pinned to a branch.
@@ -58,27 +58,27 @@ func Commit(sha string) SessionResourceCheckout {
 // The API discriminates three shapes on `type`. They overlap enough that one
 // struct carries all of them; which fields are meaningful follows from Type.
 type SessionResource struct {
-	ID   string              `json:"id,omitempty"`
+	ID   string              `json:"id,omitzero"`
 	Type SessionResourceType `json:"type"`
 
 	// File.
-	FileID string `json:"file_id,omitempty"`
+	FileID string `json:"file_id,omitzero"`
 
 	// Repository.
-	URL      string                   `json:"url,omitempty"`
-	Checkout *SessionResourceCheckout `json:"checkout,omitempty"`
+	URL      string                   `json:"url,omitzero"`
+	Checkout *SessionResourceCheckout `json:"checkout,omitzero"`
 
 	// Memory store.
-	MemoryStoreID string  `json:"memory_store_id,omitempty"`
-	Description   string  `json:"description,omitempty"`
-	Instructions  *string `json:"instructions,omitempty"`
-	Name          *string `json:"name,omitempty"`
+	MemoryStoreID string  `json:"memory_store_id,omitzero"`
+	Description   string  `json:"description,omitzero"`
+	Instructions  *string `json:"instructions,omitzero"`
+	Name          *string `json:"name,omitzero"`
 
-	Access    SessionResourceAccess `json:"access,omitempty"`
-	MountPath *string               `json:"mount_path,omitempty"`
+	Access    SessionResourceAccess `json:"access,omitzero"`
+	MountPath *string               `json:"mount_path,omitzero"`
 
-	CreatedAt string `json:"created_at,omitempty"`
-	UpdatedAt string `json:"updated_at,omitempty"`
+	CreatedAt string `json:"created_at,omitzero"`
+	UpdatedAt string `json:"updated_at,omitzero"`
 
 	Extra map[string]any `json:"-"`
 }

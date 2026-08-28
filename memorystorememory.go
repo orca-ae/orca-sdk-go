@@ -24,16 +24,16 @@ type MemoryView string
 // A list can also contain directory markers, which carry a path and the type
 // "memory_prefix" and nothing else. Type is what tells them apart.
 type Memory struct {
-	ID   string `json:"id,omitempty"`
-	Type string `json:"type,omitempty"`
+	ID   string `json:"id,omitzero"`
+	Type string `json:"type,omitzero"`
 	Path string `json:"path"`
 
-	Content       string `json:"content,omitempty"`
-	ContentSHA256 string `json:"content_sha256,omitempty"`
-	SizeBytes     int64  `json:"size_bytes,omitempty"`
+	Content       string `json:"content,omitzero"`
+	ContentSHA256 string `json:"content_sha256,omitzero"`
+	SizeBytes     int64  `json:"size_bytes,omitzero"`
 
-	CreatedAt string `json:"created_at,omitempty"`
-	UpdatedAt string `json:"updated_at,omitempty"`
+	CreatedAt string `json:"created_at,omitzero"`
+	UpdatedAt string `json:"updated_at,omitzero"`
 }
 
 // IsPrefix reports whether the entry is a directory marker rather than a

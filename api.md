@@ -42,6 +42,7 @@ func (c *Client) PostMultipart(ctx context.Context, path string, body MultipartR
 func (c *Client) PostMultipartWithResponse(ctx context.Context, path string, body MultipartRequest, opts ...option.RequestOption) ([]byte, error)
 func (c *Client) PutJSON(ctx context.Context, path string, body interface{}, out interface{}, opts ...option.RequestOption) error
 func (c *Client) PutMultipart(ctx context.Context, path string, body MultipartRequest, opts ...option.RequestOption) error
+func (c *Client) Session(sessionID string) SessionHandle
 func (c *Client) With(opts ...option.RequestOption) (*Client, error)
 func (c *Client) WithDefaultHeader(name, value string) *Client
 func (c *Client) WithPathPrefix(prefix string) *Client
@@ -449,6 +450,55 @@ func (a CredentialAuthParam) IsZero() bool
 func (a CredentialAuthParam) MarshalJSON() ([]byte, error)
 ```
 
+### DiscoveryService
+
+```go
+func (s DiscoveryService) Groups(ctx context.Context, opts ...option.RequestOption) (*APIGroupList, error)
+```
+
+### EnvironmentConfig
+
+```go
+func (c EnvironmentConfig) IsZero() bool
+func (c EnvironmentConfig) MarshalJSON() ([]byte, error)
+func (c *EnvironmentConfig) UnmarshalJSON(data []byte) error
+```
+
+### EnvironmentNetworking
+
+```go
+func (n EnvironmentNetworking) MarshalJSON() ([]byte, error)
+func (n *EnvironmentNetworking) UnmarshalJSON(data []byte) error
+```
+
+### EnvironmentPackages
+
+```go
+func (p EnvironmentPackages) MarshalJSON() ([]byte, error)
+func (p *EnvironmentPackages) UnmarshalJSON(data []byte) error
+```
+
+### EnvironmentService
+
+```go
+func (s EnvironmentService) Archive(ctx context.Context, environmentID string, opts ...option.RequestOption) (*Environment, error)
+func (s EnvironmentService) Create(ctx context.Context, params EnvironmentNewParams, opts ...option.RequestOption) (*Environment, error)
+func (s EnvironmentService) Delete(ctx context.Context, environmentID string, opts ...option.RequestOption) (*EnvironmentDeleted, error)
+func (s EnvironmentService) Get(ctx context.Context, environmentID string, opts ...option.RequestOption) (*Environment, error)
+func (s EnvironmentService) List(ctx context.Context, params EnvironmentListParams, opts ...option.RequestOption) (*pagination.PageCursor[Environment], error)
+func (s EnvironmentService) Update(ctx context.Context, environmentID string, params EnvironmentUpdateParams, opts ...option.RequestOption) (*Environment, error)
+```
+
+### FileService
+
+```go
+func (s FileService) Delete(ctx context.Context, fileID string, opts ...option.RequestOption) (*FileDeleted, error)
+func (s FileService) Download(ctx context.Context, fileID string, writer io.Writer, opts ...option.RequestOption) error
+func (s FileService) Get(ctx context.Context, fileID string, opts ...option.RequestOption) (*File, error)
+func (s FileService) List(ctx context.Context, params FileListParams, opts ...option.RequestOption) (*pagination.PageCursor[File], error)
+func (s FileService) Upload(ctx context.Context, params FileUploadParams, opts ...option.RequestOption) (*File, error)
+```
+
 ### FlexibleTimestamp
 
 ```go
@@ -547,6 +597,58 @@ func (s SessionFileService) Get(ctx context.Context, sessionID, fileID string, o
 func (s SessionFileService) List(ctx context.Context, sessionID string, params SessionFileListParams, opts ...option.RequestOption) (*pagination.PageCursor[SessionFile], error)
 ```
 
+### SessionHandle
+
+```go
+func (h SessionHandle) Archive(ctx context.Context, opts ...option.RequestOption) (*Session, error)
+func (h SessionHandle) Delete(ctx context.Context, opts ...option.RequestOption) (*SessionDeleted, error)
+func (h SessionHandle) Get(ctx context.Context, opts ...option.RequestOption) (*Session, error)
+func (h SessionHandle) SessionID() string
+func (h SessionHandle) Update(ctx context.Context, params SessionUpdateParams, opts ...option.RequestOption) (*Session, error)
+```
+
+### SessionHandleEvents
+
+```go
+func (h SessionHandleEvents) List(ctx context.Context, params SessionEventListParams, opts ...option.RequestOption) (*pagination.PageCursor[SessionEvent], error)
+func (h SessionHandleEvents) Send(ctx context.Context, events []SessionEventParam, opts ...option.RequestOption) ([]SessionEvent, error)
+func (h SessionHandleEvents) Stream(ctx context.Context, params SessionEventStreamParams, opts ...option.RequestOption) *ssestream.Stream[SessionEvent]
+```
+
+### SessionHandleFiles
+
+```go
+func (h SessionHandleFiles) Delete(ctx context.Context, fileID string, opts ...option.RequestOption) (*SessionFileDeleted, error)
+func (h SessionHandleFiles) Download(ctx context.Context, fileID string, writer io.Writer, opts ...option.RequestOption) error
+func (h SessionHandleFiles) Get(ctx context.Context, fileID string, opts ...option.RequestOption) (*SessionFile, error)
+func (h SessionHandleFiles) List(ctx context.Context, params SessionFileListParams, opts ...option.RequestOption) (*pagination.PageCursor[SessionFile], error)
+```
+
+### SessionHandleResources
+
+```go
+func (h SessionHandleResources) Add(ctx context.Context, params SessionResourceParam, opts ...option.RequestOption) (*SessionResource, error)
+func (h SessionHandleResources) Delete(ctx context.Context, resourceID string, opts ...option.RequestOption) (*SessionResourceDeleted, error)
+func (h SessionHandleResources) Get(ctx context.Context, resourceID string, opts ...option.RequestOption) (*SessionResource, error)
+func (h SessionHandleResources) List(ctx context.Context, params SessionResourceListParams, opts ...option.RequestOption) (*pagination.PageCursor[SessionResource], error)
+func (h SessionHandleResources) Update(ctx context.Context, resourceID string, params SessionResourceUpdateParams, opts ...option.RequestOption) (*SessionResource, error)
+```
+
+### SessionHandleThreadEvents
+
+```go
+func (h SessionHandleThreadEvents) List(ctx context.Context, threadID string, params SessionThreadEventListParams, opts ...option.RequestOption) (*pagination.PageCursor[SessionEvent], error)
+func (h SessionHandleThreadEvents) Stream(ctx context.Context, threadID string, params SessionThreadEventStreamParams, opts ...option.RequestOption) *ssestream.Stream[SessionEvent]
+```
+
+### SessionHandleThreads
+
+```go
+func (h SessionHandleThreads) Archive(ctx context.Context, threadID string, opts ...option.RequestOption) (*SessionThread, error)
+func (h SessionHandleThreads) Get(ctx context.Context, threadID string, opts ...option.RequestOption) (*SessionThread, error)
+func (h SessionHandleThreads) List(ctx context.Context, params SessionThreadListParams, opts ...option.RequestOption) (*pagination.PageCursor[SessionThread], error)
+```
+
 ### SessionResource
 
 ```go
@@ -593,6 +695,64 @@ func (s SessionThreadEventService) Stream(ctx context.Context, sessionID, thread
 func (s SessionThreadService) Archive(ctx context.Context, sessionID, threadID string, opts ...option.RequestOption) (*SessionThread, error)
 func (s SessionThreadService) Get(ctx context.Context, sessionID, threadID string, opts ...option.RequestOption) (*SessionThread, error)
 func (s SessionThreadService) List(ctx context.Context, sessionID string, params SessionThreadListParams, opts ...option.RequestOption) (*pagination.PageCursor[SessionThread], error)
+```
+
+### SkillService
+
+```go
+func (s SkillService) Create(ctx context.Context, params SkillNewParams, opts ...option.RequestOption) (*Skill, error)
+func (s SkillService) Delete(ctx context.Context, skillID string, opts ...option.RequestOption) (*SkillDeleted, error)
+func (s SkillService) Get(ctx context.Context, skillID string, opts ...option.RequestOption) (*Skill, error)
+func (s SkillService) List(ctx context.Context, params SkillListParams, opts ...option.RequestOption) (*pagination.PageCursor[Skill], error)
+```
+
+### SkillVersionService
+
+```go
+func (s SkillVersionService) Create(ctx context.Context, skillID string, params SkillVersionNewParams, opts ...option.RequestOption) (*SkillVersion, error)
+func (s SkillVersionService) Delete(ctx context.Context, skillID, version string, opts ...option.RequestOption) (*SkillVersionDeleted, error)
+func (s SkillVersionService) Get(ctx context.Context, skillID, version string, opts ...option.RequestOption) (*SkillVersion, error)
+func (s SkillVersionService) List(ctx context.Context, skillID string, params SkillVersionListParams, opts ...option.RequestOption) (*pagination.PageCursor[SkillVersion], error)
+```
+
+### TriggerSchemaConfig
+
+```go
+func (c TriggerSchemaConfig) MarshalJSON() ([]byte, error)
+func (c *TriggerSchemaConfig) UnmarshalJSON(data []byte) error
+```
+
+### TriggerService
+
+```go
+func (s TriggerService) Create(ctx context.Context, params TriggerNewParams, opts ...option.RequestOption) (*Trigger, error)
+func (s TriggerService) Delete(ctx context.Context, triggerID string, opts ...option.RequestOption) (*TriggerDeleted, error)
+func (s TriggerService) Get(ctx context.Context, triggerID string, opts ...option.RequestOption) (*Trigger, error)
+func (s TriggerService) List(ctx context.Context, params TriggerListParams, opts ...option.RequestOption) (*pagination.PageCursor[Trigger], error)
+func (s TriggerService) Pause(ctx context.Context, triggerID string, opts ...option.RequestOption) (*Trigger, error)
+func (s TriggerService) Unpause(ctx context.Context, triggerID string, opts ...option.RequestOption) (*Trigger, error)
+func (s TriggerService) Update(ctx context.Context, triggerID string, params TriggerUpdateParams, opts ...option.RequestOption) (*Trigger, error)
+```
+
+### TriggerSessionService
+
+```go
+func (s TriggerSessionService) List(ctx context.Context, triggerID string, params TriggerSessionListParams, opts ...option.RequestOption) (*pagination.PageCursor[Session], error)
+```
+
+### TriggerSessionTemplate
+
+```go
+func (t TriggerSessionTemplate) IsZero() bool
+func (t TriggerSessionTemplate) MarshalJSON() ([]byte, error)
+```
+
+### TriggerSource
+
+```go
+func (s TriggerSource) IsZero() bool
+func (s TriggerSource) MarshalJSON() ([]byte, error)
+func (s *TriggerSource) UnmarshalJSON(data []byte) error
 ```
 
 ### VaultCredentialAuth
@@ -715,8 +875,18 @@ func MemoryStoreResource(memoryStoreID string) SessionResourceParam
 - `CredentialValidationMCPProbe`
 - `CredentialValidationRefresh`
 - `DecodeError`
+- `Environment`
+- `EnvironmentDeleted`
+- `EnvironmentListParams`
+- `EnvironmentNewParams`
+- `EnvironmentScope`
+- `EnvironmentUpdateParams`
 - `Error`
 - `ExtensionNotAvailableError`
+- `File`
+- `FileDeleted`
+- `FileListParams`
+- `FileUploadParams`
 - `FunctionInstanceStats`
 - `FunctionInstanceStatsData`
 - `FunctionInstanceStatsDataBase`
@@ -806,6 +976,15 @@ func MemoryStoreResource(memoryStoreID string) SessionResourceParam
 - `SinkInstanceStatus`
 - `SinkInstanceStatusData`
 - `SinkStatus`
+- `Skill`
+- `SkillDeleted`
+- `SkillFile`
+- `SkillListParams`
+- `SkillNewParams`
+- `SkillVersion`
+- `SkillVersionDeleted`
+- `SkillVersionListParams`
+- `SkillVersionNewParams`
 - `SourceInstanceStatus`
 - `SourceInstanceStatusData`
 - `SourceStatus`
@@ -813,6 +992,14 @@ func MemoryStoreResource(memoryStoreID string) SessionResourceParam
 - `TaskInfo`
 - `TaskState`
 - `TimeoutError`
+- `Trigger`
+- `TriggerDeleted`
+- `TriggerListParams`
+- `TriggerNewParams`
+- `TriggerSessionListParams`
+- `TriggerSessionMode`
+- `TriggerSourceType`
+- `TriggerUpdateParams`
 - `UnprocessableEntityError`
 - `UpdateOptionsImpl`
 - `UserAbortError`

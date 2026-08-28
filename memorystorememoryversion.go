@@ -22,16 +22,16 @@ type MemoryVersionOperation string
 // MemoryVersion is one recorded change to a memory.
 type MemoryVersion struct {
 	ID        string                 `json:"id"`
-	Type      string                 `json:"type,omitempty"`
-	MemoryID  string                 `json:"memory_id,omitempty"`
-	Path      string                 `json:"path,omitempty"`
-	Operation MemoryVersionOperation `json:"operation,omitempty"`
-	Content   string                 `json:"content,omitempty"`
-	APIKeyID  string                 `json:"api_key_id,omitempty"`
-	CreatedAt string                 `json:"created_at,omitempty"`
+	Type      string                 `json:"type,omitzero"`
+	MemoryID  string                 `json:"memory_id,omitzero"`
+	Path      string                 `json:"path,omitzero"`
+	Operation MemoryVersionOperation `json:"operation,omitzero"`
+	Content   string                 `json:"content,omitzero"`
+	APIKeyID  string                 `json:"api_key_id,omitzero"`
+	CreatedAt string                 `json:"created_at,omitzero"`
 
 	// RedactedAt is set once the version's content has been redacted.
-	RedactedAt *string `json:"redacted_at,omitempty"`
+	RedactedAt *string `json:"redacted_at,omitzero"`
 }
 
 // MemoryVersionListParams filters and pages the audit trail.

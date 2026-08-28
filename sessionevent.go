@@ -25,7 +25,7 @@ type SessionEventService struct {
 // rather than being dropped.
 type SessionEventContent struct {
 	Type  string         `json:"type"`
-	Text  string         `json:"text,omitempty"`
+	Text  string         `json:"text,omitzero"`
 	Extra map[string]any `json:"-"`
 }
 
@@ -49,7 +49,7 @@ func (c *SessionEventContent) UnmarshalJSON(data []byte) error {
 // SessionEventParam is an event to append to a session.
 type SessionEventParam struct {
 	Type    string                `json:"type"`
-	Content []SessionEventContent `json:"content,omitempty"`
+	Content []SessionEventContent `json:"content,omitzero"`
 	Extra   map[string]any        `json:"-"`
 }
 
@@ -68,11 +68,11 @@ func (e SessionEventParam) MarshalJSON() ([]byte, error) {
 type SessionEvent struct {
 	ID        string                `json:"id"`
 	Type      string                `json:"type"`
-	SessionID string                `json:"session_id,omitempty"`
-	ThreadID  string                `json:"thread_id,omitempty"`
-	Subpath   string                `json:"subpath,omitempty"`
-	Content   []SessionEventContent `json:"content,omitempty"`
-	CreatedAt string                `json:"created_at,omitempty"`
+	SessionID string                `json:"session_id,omitzero"`
+	ThreadID  string                `json:"thread_id,omitzero"`
+	Subpath   string                `json:"subpath,omitzero"`
+	Content   []SessionEventContent `json:"content,omitzero"`
+	CreatedAt string                `json:"created_at,omitzero"`
 	Extra     map[string]any        `json:"-"`
 }
 

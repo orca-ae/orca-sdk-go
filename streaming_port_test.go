@@ -847,8 +847,49 @@ func TestManagedAgentSSEToReadableStream(t *testing.T) {
 }
 
 // TS: 'throws when iterated a second time'.
+//
+// Go reports a drained stream by returning false rather than by throwing. That
+// is the better answer for a range loop - a second loop over a finished stream
+// is a no-op, not a crash - but it still has to be true: a stream that replayed
+// its events, or that errored, would break a caller that loops defensively.
 func TestManagedAgentSSEConsumedOnceGuard(t *testing.T) {
-	t.Skip("no Go analogue: there is no Stream object to re-iterate — each call to " +
-		"renderManagedAgentSSE consumes a caller-supplied io.Reader, and re-reading a " +
-		"drained reader is already a no-op")
+	t.Parallel()
+
+	type event struct {
+		V int `json:"v"`
+	}
+
+	client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+		return sseResponse(http.StatusOK, `data: {"v":1}`+"\n\n"+`data: {"v":2}`+"\n\n"), nil
+	})
+
+	stream := StreamEvents[event](context.Background(), client, "/v1/sessions/s1/events/stream")
+	defer stream.Close()
+
+	var first []int
+	for stream.Next() {
+		first = append(first, stream.Current().V)
+	}
+	if err := stream.Err(); err != nil {
+		t.Fatalf("stream error = %v", err)
+	}
+	if want := []int{1, 2}; !slices.Equal(first, want) {
+		t.Fatalf("first pass = %v, want %v", first, want)
+	}
+
+	var second []int
+	for stream.Next() {
+		second = append(second, stream.Current().V)
+	}
+	if len(second) != 0 {
+		t.Errorf("second pass = %v, want nothing - the stream is consumed", second)
+	}
+	if err := stream.Err(); err != nil {
+		t.Errorf("Err() after a second pass = %v, want nil - exhaustion is not a failure", err)
+	}
+
+	// Close is idempotent, so a deferred Close after an explicit one is safe.
+	if err := stream.Close(); err != nil {
+		t.Errorf("Close() error = %v, want nil", err)
+	}
 }

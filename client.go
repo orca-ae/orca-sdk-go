@@ -61,6 +61,22 @@ type Client struct {
 	// Vaults manages vaults and the credentials stored in them.
 	Vaults VaultService
 
+	// Environments manages the environments sessions run in.
+	Environments EnvironmentService
+
+	// Files manages uploaded files.
+	Files FileService
+
+	// Skills manages skill bundles and their versions.
+	Skills SkillService
+
+	// Triggers manages the rules that start sessions on their own. They are
+	// core, not a cloud extension.
+	Triggers TriggerService
+
+	// Discovery reports what a deployment can do.
+	Discovery DiscoveryService
+
 	// Cloud is the StreamNative Cloud extension surface. Every call through it
 	// is gated on the deployment advertising the cloud.sn.io group.
 	Cloud CloudService
@@ -76,6 +92,11 @@ func newClientFrom(cfg *requestconfig.RequestConfig, discovery *discoveryCache) 
 	client.Sessions = newSessionService(client)
 	client.MemoryStores = newMemoryStoreService(client)
 	client.Vaults = newVaultService(client)
+	client.Environments = EnvironmentService{client: client}
+	client.Files = FileService{client: client}
+	client.Skills = newSkillService(client)
+	client.Triggers = newTriggerService(client)
+	client.Discovery = DiscoveryService{client: client}
 	client.Cloud = newCloudService(client)
 	return client
 }

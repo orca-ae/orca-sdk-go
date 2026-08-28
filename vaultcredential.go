@@ -35,7 +35,7 @@ const (
 type CredentialNetworking struct {
 	// Type is "limited" or "unrestricted".
 	Type         string   `json:"type"`
-	AllowedHosts []string `json:"allowed_hosts,omitempty"`
+	AllowedHosts []string `json:"allowed_hosts,omitzero"`
 }
 
 // LimitedNetworking returns networking restricted to the given hosts.
@@ -120,17 +120,17 @@ func (a CredentialAuthParam) IsZero() bool { return a.Type == "" }
 type VaultCredentialAuth struct {
 	Type CredentialAuthType `json:"type"`
 
-	MCPServerURL string  `json:"mcp_server_url,omitempty"`
-	ExpiresAt    *string `json:"expires_at,omitempty"`
+	MCPServerURL string  `json:"mcp_server_url,omitzero"`
+	ExpiresAt    *string `json:"expires_at,omitzero"`
 
-	SecretName        string                `json:"secret_name,omitempty"`
-	Networking        *CredentialNetworking `json:"networking,omitempty"`
-	InjectionLocation map[string]bool       `json:"injection_location,omitempty"`
+	SecretName        string                `json:"secret_name,omitzero"`
+	Networking        *CredentialNetworking `json:"networking,omitzero"`
+	InjectionLocation map[string]bool       `json:"injection_location,omitzero"`
 
-	Provider  string `json:"provider,omitempty"`
-	Scheme    string `json:"scheme,omitempty"`
-	LogicalID string `json:"logical_id,omitempty"`
-	Version   string `json:"version,omitempty"`
+	Provider  string `json:"provider,omitzero"`
+	Scheme    string `json:"scheme,omitzero"`
+	LogicalID string `json:"logical_id,omitzero"`
+	Version   string `json:"version,omitzero"`
 
 	Extra map[string]any `json:"-"`
 }
@@ -203,7 +203,7 @@ type CredentialValidation struct {
 type CredentialNewParams struct {
 	DisplayName param.Opt[string]   `json:"display_name,omitzero"`
 	Auth        CredentialAuthParam `json:"auth,omitzero"`
-	Metadata    map[string]string   `json:"metadata,omitempty"`
+	Metadata    map[string]string   `json:"metadata,omitzero"`
 }
 
 // CredentialUpdateParams updates a credential.
