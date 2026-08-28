@@ -1,0 +1,458 @@
+name: E2E - Registry with Managed Agents provider
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+    inputs:
+      debug_ssh:
+        description: Open a restricted SSH session after an E2E failure
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: e2e-registry-provider-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  secret-gate:
+    name: Check E2E access and secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      enabled: ${{ steps.gate.outputs.enabled }}
+    steps:
+      - name: Decide whether the E2E job can run
+        id: gate
+        env:
+          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          SNBOT_GITHUB_TOKEN: ${{ secrets.SNBOT_GITHUB_TOKEN }}
+          LICENSE: ${{ secrets.LICENSE }}
+          OAUTH_CLIENT_ID: ${{ secrets.OAUTH_CLIENT_ID }}
+          OAUTH_CLIENT_SECRET: ${{ secrets.OAUTH_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && \
+                "${PR_HEAD_REPOSITORY:-}" != "${GITHUB_REPOSITORY}" ]]; then
+            echo "enabled=false" >> "${GITHUB_OUTPUT}"
+            echo "Skipping secret-backed E2E for a fork pull request."
+            exit 0
+          fi
+          missing=()
+          for name in SNBOT_GITHUB_TOKEN LICENSE OAUTH_CLIENT_ID OAUTH_CLIENT_SECRET; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("${name}")
+            fi
+          done
+          if ((${#missing[@]} > 0)); then
+            echo "enabled=false" >> "${GITHUB_OUTPUT}"
+            echo "::notice::E2E secrets not configured (${missing[*]}); skipping the E2E job."
+            exit 0
+          fi
+          echo "enabled=true" >> "${GITHUB_OUTPUT}"
+
+  e2e:
+    name: SDK against Registry provider topology
+    needs: secret-gate
+    if: needs.secret-gate.outputs.enabled == 'true'
+    runs-on: ubuntu-latest-8-cores
+    timeout-minutes: 120
+    env:
+      # The temporary Registry image uses a Kubernetes Java client that cannot
+      # deserialize PodStatus.observedGeneration. The field is enabled by
+      # default starting in Kubernetes 1.34, so stay on kind v0.31's published
+      # 1.33 node image until the Registry client supports the newer API shape.
+      KUBECTL_VERSION: 1.33.7
+      KIND_VERSION: 0.31.0
+      KIND_K8S_VERSION: 'v1.33.7@sha256:d26ef333bdb2cbe9862a0f7c3803ecc7b4303d8cea8e814b481b09949d353040'
+      KIND_WORKER_COUNT: '0'
+      KIND_ENABLE_FUSE: 'true'
+      KIND_ENABLE_LOCAL_REGISTRY: 'false'
+      OAUTH_AUDIENCE: urn:sn:pulsar:sndev:function-ci
+    steps:
+      - name: Check out SDK
+        uses: actions/checkout@v4
+
+      - name: Resolve pinned Registry dependency
+        id: dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          source tests/e2e/dependencies.env
+          [[ "${ORCA_AGENT_REGISTRY_REF}" =~ ^[0-9a-f]{40}$ ]]
+          {
+            echo "registry_repository=${ORCA_AGENT_REGISTRY_REPOSITORY}"
+            echo "registry_ref=${ORCA_AGENT_REGISTRY_REF}"
+            echo "registry_image=${ORCA_AGENT_REGISTRY_IMAGE}"
+            echo "managed_repository=${ORCA_MANAGED_AGENTS_REPOSITORY}"
+            echo "managed_registry_image=${ORCA_MANAGED_AGENTS_REGISTRY_IMAGE}"
+            echo "managed_harness_image=${ORCA_MANAGED_AGENTS_HARNESS_IMAGE}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Check out pinned Orca Agent Registry
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.dependencies.outputs.registry_repository }}
+          ref: ${{ steps.dependencies.outputs.registry_ref }}
+          path: .e2e/orca-agent-registry
+          token: ${{ secrets.SNBOT_GITHUB_TOKEN }}
+          persist-credentials: false
+
+      - name: Verify Registry dependency revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          source tests/e2e/dependencies.env
+          test "$(git -C .e2e/orca-agent-registry rev-parse HEAD)" = "${ORCA_AGENT_REGISTRY_REF}"
+
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@v1.3.0
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: false
+
+      - name: Ensure swap capacity for the Kind topology
+        shell: bash
+        run: |
+          set -euo pipefail
+          minimum_swap_bytes=$((8 * 1024 * 1024 * 1024))
+          current_swap_bytes=$(free --bytes | awk '/^Swap:/ {print $2}')
+          if ((current_swap_bytes < minimum_swap_bytes)); then
+            additional_swap_bytes=$((minimum_swap_bytes - current_swap_bytes))
+            sudo fallocate --length "${additional_swap_bytes}" /mnt/orca-e2e.swap
+            sudo chmod 0600 /mnt/orca-e2e.swap
+            sudo mkswap /mnt/orca-e2e.swap
+            sudo swapon /mnt/orca-e2e.swap
+          fi
+          swapon --show
+          free -h
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: '1.26.0'
+          cache: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Check the e2e suite compiles before standing up a cluster
+        run: go vet -tags e2e ./...
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Verify Orca Agent Registry image
+        env:
+          REGISTRY_IMAGE: ${{ steps.dependencies.outputs.registry_image }}
+        run: |
+          set -euo pipefail
+          manifest=$(docker buildx imagetools inspect \
+            "${REGISTRY_IMAGE}" --format '{{json .Manifest}}')
+          digest=$(jq -r '.digest' <<<"${manifest}")
+          [[ "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          {
+            echo "### Orca Agent Registry compatibility image"
+            echo
+            echo "- Requested: \`${REGISTRY_IMAGE}\`"
+            echo "- Resolved: \`${digest}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: Install yq
+        run: |
+          sudo curl -fsSL \
+            https://github.com/mikefarah/yq/releases/download/v4.33.3/yq_linux_amd64 \
+            -o /usr/local/bin/yq
+          sudo chmod 0755 /usr/local/bin/yq
+
+      - name: Resolve latest Managed Agents Registry image
+        id: managed-registry-image
+        env:
+          SOURCE_IMAGE: ${{ steps.dependencies.outputs.managed_registry_image }}
+          IMAGE_COMPONENT: Managed Agents Registry
+        run: tests/e2e/resolve-latest-image.sh
+
+      - name: Resolve latest Managed Agents Harness image
+        id: managed-harness-image
+        env:
+          SOURCE_IMAGE: ${{ steps.dependencies.outputs.managed_harness_image }}
+          IMAGE_COMPONENT: Managed Agents Harness
+        run: tests/e2e/resolve-latest-image.sh
+
+      - name: Resolve matching Managed Agents source revision
+        id: managed-source
+        env:
+          REGISTRY_REVISION: ${{ steps.managed-registry-image.outputs.revision }}
+          HARNESS_REVISION: ${{ steps.managed-harness-image.outputs.revision }}
+        run: |
+          set -euo pipefail
+          [[ "${REGISTRY_REVISION}" =~ ^[0-9a-f]{40}$ ]]
+          if [[ "${REGISTRY_REVISION}" != "${HARNESS_REVISION}" ]]; then
+            echo "::error::Registry and Harness latest tags come from different source revisions"
+            exit 1
+          fi
+          echo "ref=${REGISTRY_REVISION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Check out matching Orca Managed Agents source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.dependencies.outputs.managed_repository }}
+          ref: ${{ steps.managed-source.outputs.ref }}
+          path: .e2e/orca-managed-agents
+          token: ${{ secrets.SNBOT_GITHUB_TOKEN }}
+          persist-credentials: false
+
+      - name: Verify Managed Agents source revision
+        run: |
+          set -euo pipefail
+          test "$(git -C .e2e/orca-managed-agents rev-parse HEAD)" = "${{ steps.managed-source.outputs.ref }}"
+          {
+            echo "### Managed Agents Helm source"
+            echo
+            echo "- Revision: \`${{ steps.managed-source.outputs.ref }}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Resolve Chart-pinned AI Gateway image
+        id: managed-gateway-image
+        run: |
+          set -euo pipefail
+          values=.e2e/orca-managed-agents/charts/orca-managed-agents/values.yaml
+          repository=$(yq eval '.images.aiGateway.repository' "${values}")
+          tag=$(yq eval '.images.aiGateway.tag' "${values}")
+          test -n "${repository}"
+          test -n "${tag}"
+          source_image="${repository}:${tag}"
+          echo "source_image=${source_image}" >> "${GITHUB_OUTPUT}"
+          {
+            echo "### AI Gateway compatibility image"
+            echo
+            echo "- Chart pin: \`${source_image}\`"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Disable the pinned Registry local image cache
+        run: |
+          set -euo pipefail
+          git -C .e2e/orca-agent-registry apply --unidiff-zero \
+            "${GITHUB_WORKSPACE}/tests/e2e/registry-direct-pulls.patch"
+
+      - name: Configure OAuth fixtures
+        working-directory: .e2e/orca-agent-registry
+        env:
+          OAUTH_CLIENT_ID: ${{ secrets.OAUTH_CLIENT_ID }}
+          OAUTH_CLIENT_SECRET: ${{ secrets.OAUTH_CLIENT_SECRET }}
+        run: |
+          sed -i "s/CLIENT_SECRET/${OAUTH_CLIENT_SECRET}/g" .ci/clusters/auth.json
+          sed -i "s/CLIENT_ID/${OAUTH_CLIENT_ID}/g" .ci/clusters/auth.json
+          sed -i "s/CLIENT_SECRET/${OAUTH_CLIENT_SECRET}/g" .ci/clusters/broker_client_credential.json
+          sed -i "s/CLIENT_ID/${OAUTH_CLIENT_ID}/g" .ci/clusters/broker_client_credential.json
+
+      - name: Prepare host FUSE device
+        run: |
+          set -euo pipefail
+          sudo modprobe fuse || true
+          if [[ ! -c /dev/fuse ]]; then
+            sudo mknod /dev/fuse c 10 229
+          fi
+          sudo chmod 0666 /dev/fuse
+          test -c /dev/fuse
+
+      - name: Deploy Registry Kubernetes dependencies
+        working-directory: .e2e/orca-agent-registry
+        env:
+          SNBOT_GITHUB_TOKEN: ${{ secrets.SNBOT_GITHUB_TOKEN }}
+          LICENSE: ${{ secrets.LICENSE }}
+          OAUTH_CLIENT_ID: ${{ secrets.OAUTH_CLIENT_ID }}
+          OAUTH_CLIENT_SECRET: ${{ secrets.OAUTH_CLIENT_SECRET }}
+          ENABLE_RBAC: 'true'
+        run: .ci/deploy_pulsar_cluster.sh .ci/clusters/values_mesh_worker_service_with_oauth_for_registry_service.yaml
+
+      - name: Build and load deterministic fixture
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --platform linux/amd64 \
+            --load \
+            --tag orca-managed-agents-fixture:e2e \
+            --file .e2e/orca-managed-agents/charts/orca-managed-agents/test/kind/Dockerfile.fixture \
+            .e2e/orca-managed-agents
+          cluster_name=$(.e2e/orca-agent-registry/output/bin/kind get clusters | \
+            awk '/^sn-platform-/ {print; exit}')
+          test -n "${cluster_name}"
+          .e2e/orca-agent-registry/output/bin/kind load docker-image \
+            --name "${cluster_name}" \
+            orca-managed-agents-fixture:e2e
+          docker image rm orca-managed-agents-fixture:e2e
+          docker buildx prune --all --force
+
+      - name: Configure GHCR pull access
+        env:
+          GH_TOKEN: ${{ secrets.SNBOT_GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          username=$(gh api user --jq .login)
+          kubectl --namespace default create secret docker-registry orca-e2e-ghcr \
+            --docker-server=ghcr.io \
+            --docker-username="${username}" \
+            --docker-password="${GH_TOKEN}" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Deploy Managed Agents provider infrastructure
+        working-directory: .e2e/orca-agent-registry
+        shell: bash
+        run: |
+          set -euo pipefail
+          kubectl apply -f .ci/clusters/orca-managed-agents-postgres.yaml
+          kubectl wait --for=condition=available --timeout=3m deployment/orca-managed-agents-postgres
+          kubectl delete job orca-managed-agents-minio-init --ignore-not-found
+          kubectl apply -f .ci/clusters/orca-managed-agents-minio.yaml
+          kubectl wait --for=condition=available --timeout=3m deployment/orca-managed-agents-minio
+          kubectl wait --for=condition=complete --timeout=3m job/orca-managed-agents-minio-init
+
+      - name: Deploy Managed Agents with Helm
+        env:
+          MANAGED_AGENTS_CHART_DIR: ${{ github.workspace }}/.e2e/orca-managed-agents/charts/orca-managed-agents
+          MANAGED_AGENTS_NAMESPACE: default
+          MANAGED_AGENTS_REGISTRY_IMAGE: ${{ steps.managed-registry-image.outputs.source_image }}
+          MANAGED_AGENTS_HARNESS_IMAGE: ${{ steps.managed-harness-image.outputs.source_image }}
+          MANAGED_AGENTS_AI_GATEWAY_IMAGE: ${{ steps.managed-gateway-image.outputs.source_image }}
+          MANAGED_AGENTS_FIXTURE_IMAGE: orca-managed-agents-fixture:e2e
+          MANAGED_AGENTS_IMAGE_PULL_SECRET: orca-e2e-ghcr
+        run: tests/e2e/deploy-managed-agents-helm.sh
+
+      - name: Seed provider workspace API key
+        run: tests/e2e/seed-managed-agents-api-key.sh default orca-managed-agents-registry orca_sdk_e2e_local_key
+
+      - name: Prepare Registry service account and RBAC fixtures
+        working-directory: .e2e/orca-agent-registry
+        env:
+          OAUTH_CLIENT_ID: ${{ secrets.OAUTH_CLIENT_ID }}
+          OAUTH_CLIENT_SECRET: ${{ secrets.OAUTH_CLIENT_SECRET }}
+        run: .ci/prepare.sh
+
+      - name: Deploy Orca Agent Registry
+        working-directory: .e2e/orca-agent-registry
+        shell: bash
+        env:
+          REGISTRY_IMAGE: ${{ steps.dependencies.outputs.registry_image }}
+        run: |
+          set -euo pipefail
+          yq eval -i '
+            .spec.image = strenv(REGISTRY_IMAGE) |
+            .spec.pod.resources.requests.cpu = "10m"
+          ' .ci/clusters/registry-service.yaml
+          sed -i 's/__MANAGED_AGENT_STORAGE_BACKEND__/kubernetes/g' .ci/clusters/registry-service.yaml
+          sed -i 's/orca_e2e_registry_service_ci/orca_sdk_e2e_local_key/g' .ci/clusters/registry-service.yaml
+          kubectl apply -f .ci/clusters/registry-service.yaml
+          registry_pod_deadline=$((SECONDS + 120))
+          until kubectl get pods \
+            --selector cloud.streamnative.io/component=functionsworker \
+            --output=name 2>/dev/null | grep -q .; do
+            if ((SECONDS >= registry_pod_deadline)); then
+              echo "timed out waiting for the Registry worker pod to be created" >&2
+              kubectl get pulsarfunctionsworkers.pulsar.streamnative.io registry-worker -o yaml || true
+              kubectl get events --sort-by=.lastTimestamp | tail -n 100 || true
+              exit 1
+            fi
+            sleep 2
+          done
+          if ! kubectl wait \
+            --selector cloud.streamnative.io/component=functionsworker \
+            --for=condition=Ready pod \
+            --timeout=10m; then
+            echo "::group::Registry worker diagnostics"
+            kubectl get pods \
+              --selector cloud.streamnative.io/component=functionsworker \
+              --output=wide || true
+            kubectl describe pods \
+              --selector cloud.streamnative.io/component=functionsworker || true
+            kubectl logs \
+              --selector cloud.streamnative.io/component=functionsworker \
+              --all-containers=true \
+              --prefix=true \
+              --tail=300 || true
+            kubectl get events --sort-by=.lastTimestamp | tail -n 100 || true
+            echo "::endgroup::"
+            exit 1
+          fi
+
+      - name: Run SDK against Registry provider topology
+        env:
+          OAUTH_CLIENT_ID: ${{ secrets.OAUTH_CLIENT_ID }}
+          OAUTH_CLIENT_SECRET: ${{ secrets.OAUTH_CLIENT_SECRET }}
+        run: tests/e2e/run-registry-provider.sh
+
+      - name: Open restricted SSH debug session
+        if: ${{ failure() && !cancelled() && ((github.event_name == 'workflow_dispatch' && inputs.debug_ssh) || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'ssh-debug'))) }}
+        uses: mxschmitt/action-tmate@v3
+        timeout-minutes: 30
+        continue-on-error: true
+        with:
+          limit-access-to-actor: true
+          connect-timeout-seconds: 1800
+
+      - name: Dump diagnostics
+        if: failure() || cancelled()
+        shell: bash
+        run: |
+          set +e
+          df -h
+          free -h
+          swapon --show
+          sudo dmesg -T | tail -300
+          timeout 30s docker ps -a
+          timeout 30s docker stats --no-stream
+          timeout 30s docker system df
+          timeout 30s kubectl get pods,deployments,services,jobs --all-namespaces -o wide
+          timeout 30s kubectl describe nodes
+          timeout 30s kubectl get events --all-namespaces --sort-by=.lastTimestamp
+          timeout 30s kubectl get pulsarfunctionsworkers.pulsar.streamnative.io registry-worker -o yaml
+          timeout 30s kubectl describe pods --selector cloud.streamnative.io/component=functionsworker
+          timeout 30s helm --namespace default status orca-managed-agents
+          for deployment in \
+            orca-managed-agents-registry \
+            orca-managed-agents-harness \
+            orca-managed-agents-ai-gateway \
+            orca-managed-agents-fixture; do
+            timeout 30s kubectl logs "deployment/${deployment}" --all-containers=true --tail=300
+          done
+          timeout 30s kubectl logs deployment/function-mesh-controller-manager \
+            --namespace function-mesh --all-containers=true --tail=300
+          cluster_name=$(.e2e/orca-agent-registry/output/bin/kind get clusters | \
+            awk '/^sn-platform-/ {print; exit}')
+          if [[ -n "${cluster_name}" ]]; then
+            timeout 5m .e2e/orca-agent-registry/output/bin/kind export logs \
+              "${RUNNER_TEMP}/kind-logs" --name "${cluster_name}"
+          fi
+          exit 0
+
+      - name: Upload Kind diagnostics
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: registry-kind-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/kind-logs
+          if-no-files-found: ignore
+
+      - name: Clean up Registry cluster
+        if: always()
+        working-directory: .e2e/orca-agent-registry
+        run: .ci/cleanup.sh

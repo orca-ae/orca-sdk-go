@@ -1,0 +1,53 @@
+diff --git a/.ci/helm.sh b/.ci/helm.sh
+index 3704c5a..3d2b363 100644
+--- a/.ci/helm.sh
++++ b/.ci/helm.sh
+@@ -60,2 +60,4 @@
+-    ${FUNCTION_MESH_HOME}/hack/kind-cluster-build.sh --name sn-platform-${CLUSTER_ID} -c 3 -v 10 -k ${KIND_K8S_VERSION}
++    ${FUNCTION_MESH_HOME}/hack/kind-cluster-build.sh --name sn-platform-${CLUSTER_ID} -c "${KIND_WORKER_COUNT:-3}" -v 10 -k ${KIND_K8S_VERSION}
+-    ci::wait_for_kind_registry
++    if [[ "${KIND_ENABLE_LOCAL_REGISTRY:-true}" == "true" ]]; then
++        ci::wait_for_kind_registry
++    fi
+@@ -217 +218,0 @@
+-    docker system prune -f
+@@ -2732,3 +2733,7 @@
+ function ci::pull_push_runner_images() {
++  if [[ "${KIND_ENABLE_LOCAL_REGISTRY:-true}" != "true" ]]; then
++    echo "Skip publishing images to the disabled Kind registry."
++    return
++  fi
+   docker pull streamnative/pulsar-functions-generic-node-runner:0.3.0
+   docker tag streamnative/pulsar-functions-generic-node-runner:0.3.0 localhost:5000/pulsar-functions-generic-node-runner:0.3.0
+diff --git a/.ci/clusters/values_mesh_worker_service_with_oauth_for_registry_service.yaml b/.ci/clusters/values_mesh_worker_service_with_oauth_for_registry_service.yaml
+index 61f33d1..974b0c7 100644
+--- a/.ci/clusters/values_mesh_worker_service_with_oauth_for_registry_service.yaml
++++ b/.ci/clusters/values_mesh_worker_service_with_oauth_for_registry_service.yaml
+@@ -89 +89 @@
+-  replicaCount: 3
++  replicaCount: 1
+diff --git a/.ci/deploy_pulsar_cluster.sh b/.ci/deploy_pulsar_cluster.sh
+index 270fd0b..19f937d 100755
+--- a/.ci/deploy_pulsar_cluster.sh
++++ b/.ci/deploy_pulsar_cluster.sh
+@@ -108,3 +107,0 @@
+-
+-# reclaim docker disk space
+-docker system prune -af
+diff --git a/hack/kind-cluster-build.sh b/hack/kind-cluster-build.sh
+index cb91671..2ef7b83 100755
+--- a/hack/kind-cluster-build.sh
++++ b/hack/kind-cluster-build.sh
+@@ -135,0 +136,4 @@
++EOF
++
++if [[ "${KIND_ENABLE_LOCAL_REGISTRY:-true}" == "true" ]]; then
++    cat <<EOF >> ${configFile}
+@@ -141,0 +146 @@
++fi
+@@ -186 +191,2 @@
+-echo "deploy docker registry in kind"
++if [[ "${KIND_ENABLE_LOCAL_REGISTRY:-true}" == "true" ]]; then
++    echo "deploy docker registry in kind"
+@@ -262,0 +269 @@
++fi

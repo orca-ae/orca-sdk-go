@@ -28,9 +28,16 @@ go test -run=^$ ./...
 echo "==> Building examples"
 (cd examples && go build ./...)
 
+# The e2e harness is shell, and a syntax error in it only surfaces an hour into
+# a cluster build. Parse it here instead.
 echo "==> Checking shell scripts parse"
-for script in scripts/*; do
+for script in scripts/* tests/e2e/*.sh; do
 	[ -f "$script" ] || continue
 	head -1 "$script" | grep -q '^#!.*sh' || continue
 	bash -n "$script"
 done
+
+# The e2e suite is excluded from the default build by its tag, so nothing else
+# here would notice it failing to compile.
+echo "==> Checking the e2e suite compiles"
+go vet -tags e2e ./...
