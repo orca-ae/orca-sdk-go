@@ -219,6 +219,12 @@ func (s CloudPackageService) UpdateMetadata(ctx context.Context, packageType, pa
 func (s CloudPackageService) Upload(ctx context.Context, packageType, packageName, version, filePath string, metadata PackageMetadata, opts ...option.RequestOption) error
 ```
 
+### CloudService
+
+```go
+func (s CloudService) EnsureAvailable(ctx context.Context, opts ...option.RequestOption) error
+```
+
 ### ConnectionsClient
 
 ```go
@@ -436,6 +442,7 @@ func (s SessionService) Create(ctx context.Context, params SessionNewParams, opt
 func (s SessionService) Delete(ctx context.Context, sessionID string, opts ...option.RequestOption) (*SessionDeleted, error)
 func (s SessionService) Get(ctx context.Context, sessionID string, opts ...option.RequestOption) (*Session, error)
 func (s SessionService) List(ctx context.Context, params SessionListParams, opts ...option.RequestOption) (*pagination.PageCursor[Session], error)
+func (s SessionService) Outcome(ctx context.Context, sessionID string, opts ...option.RequestOption) (*OutcomeEvaluation, error)
 func (s SessionService) Update(ctx context.Context, sessionID string, params SessionUpdateParams, opts ...option.RequestOption) (*Session, error)
 ```
 
@@ -487,6 +494,7 @@ func (s SkillService) List(ctx context.Context, params SkillListParams, opts ...
 ```go
 func (s SkillVersionService) Create(ctx context.Context, skillID string, params SkillVersionNewParams, opts ...option.RequestOption) (*SkillVersion, error)
 func (s SkillVersionService) Delete(ctx context.Context, skillID, version string, opts ...option.RequestOption) (*SkillVersionDeleted, error)
+func (s SkillVersionService) Download(ctx context.Context, skillID, version string, writer io.Writer, opts ...option.RequestOption) error
 func (s SkillVersionService) Get(ctx context.Context, skillID, version string, opts ...option.RequestOption) (*SkillVersion, error)
 func (s SkillVersionService) List(ctx context.Context, skillID string, params SkillVersionListParams, opts ...option.RequestOption) (*pagination.PageCursor[SkillVersion], error)
 ```
@@ -837,7 +845,6 @@ func MemoryStoreResource(memoryStoreID string) SessionResourceParam
 - `CloudAgentService`
 - `CloudCatalogService`
 - `CloudConnectorService`
-- `CloudService`
 - `ConfigFieldDefinition`
 - `ConfigKeyInfo`
 - `ConflictError`

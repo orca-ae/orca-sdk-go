@@ -807,3 +807,59 @@ func TestSessionThreads(t *testing.T) {
 		}
 	})
 }
+
+func TestSessionOutcome(t *testing.T) {
+	t.Parallel()
+
+	t.Run("returns the graded outcome", func(t *testing.T) {
+		t.Parallel()
+
+		client, transport := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+			return jsonResponse(http.StatusOK, `{"type":"outcome_evaluation","outcome_id":"oc_1",`+
+				`"description":"Did the thing","result":"pass","explanation":null,"iteration":2,`+
+				`"completed_at":"2026-01-02T00:00:00Z","provider_detail":{"score":0.9}}`), nil
+		})
+
+		outcome, err := client.Sessions.Outcome(context.Background(), "session/slash")
+		if err != nil {
+			t.Fatalf("Outcome() error = %v", err)
+		}
+		if outcome == nil {
+			t.Fatal("Outcome() = nil, want the evaluation")
+		}
+		if outcome.OutcomeID != "oc_1" || outcome.Result != "pass" || outcome.Iteration != 2 {
+			t.Errorf("outcome = %+v, want oc_1/pass/2", outcome)
+		}
+		if outcome.Explanation != nil {
+			t.Errorf("Explanation = %v, want nil - it is nullable", outcome.Explanation)
+		}
+		// The shape is open-ended, so a provider-specific key must survive.
+		if outcome.Extra["provider_detail"] == nil {
+			t.Errorf("Extra = %v, want provider_detail preserved", outcome.Extra)
+		}
+
+		want := "/v1/sessions/session%2Fslash/outcome"
+		if got := transport.Only(t).Path(); got != want {
+			t.Errorf("path = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("a null body is no outcome yet, not a failure", func(t *testing.T) {
+		t.Parallel()
+
+		// The contract marks the whole response nullable. A session that has
+		// not been graded is a normal state, so this must not be an error and
+		// must not be an empty-but-present evaluation either.
+		client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+			return jsonResponse(http.StatusOK, `null`), nil
+		})
+
+		outcome, err := client.Sessions.Outcome(context.Background(), "s1")
+		if err != nil {
+			t.Fatalf("Outcome() error = %v, want nil", err)
+		}
+		if outcome != nil {
+			t.Errorf("Outcome() = %+v, want nil", outcome)
+		}
+	})
+}

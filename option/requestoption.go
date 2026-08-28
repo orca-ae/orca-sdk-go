@@ -242,6 +242,29 @@ func WithIdempotencyKey(key string) RequestOption {
 	})
 }
 
+// WithRawJSON captures the response body exactly as the server sent it.
+//
+// A decoded value is shaped by whatever this SDK models: a field the types do
+// not declare is dropped, and an empty one may vanish. That is fine for reading
+// a value, and wrong for reproducing a response - rendering it to a user,
+// forwarding it, or storing it. Use this to get both, the typed value to work
+// with and the bytes to reproduce:
+//
+//	var raw []byte
+//	agent, err := client.Agents.Get(ctx, id, params, option.WithRawJSON(&raw))
+//
+// It applies to operations with a JSON response body. Streaming and download
+// operations hand their body to the caller already, and leave raw untouched.
+func WithRawJSON(raw *[]byte) RequestOption {
+	return newOption(func(cfg *requestconfig.RequestConfig) error {
+		if raw == nil {
+			return apierror.Validationf("raw JSON destination is required")
+		}
+		cfg.RawBody = raw
+		return nil
+	})
+}
+
 // WithWarningWriter routes non-fatal diagnostics, such as the legacy base-URL
 // deprecation notice, to w. It defaults to discarding them.
 //

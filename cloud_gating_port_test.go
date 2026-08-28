@@ -477,3 +477,64 @@ func callWithZeroArgs(t *testing.T, fn reflect.Value) []reflect.Value {
 	}
 	return fn.Call(args)
 }
+
+// TestCloudEnsureAvailable covers the exported gate.
+//
+// Every cloud operation already checks, so this exists only for callers that
+// want to fail before starting work rather than partway through - and the point
+// is that asking first costs nothing, because it shares the same cached probe.
+func TestCloudEnsureAvailable(t *testing.T) {
+	t.Parallel()
+
+	t.Run("reports the extension missing without sending a resource request", func(t *testing.T) {
+		t.Parallel()
+
+		client, transport, _ := newGatedClient(t, func(int) (*http.Response, error) {
+			return jsonResponse(http.StatusOK, apisBody()), nil
+		})
+
+		err := client.Cloud.EnsureAvailable(context.Background())
+
+		var unavailable *ExtensionNotAvailableError
+		if !errors.As(err, &unavailable) {
+			t.Fatalf("error = %v (%T), want *ExtensionNotAvailableError", err, err)
+		}
+		if got := transport.resourceCalls(); len(got) != 0 {
+			t.Errorf("resource requests = %v, want none", got)
+		}
+	})
+
+	t.Run("passes when the deployment advertises the group", func(t *testing.T) {
+		t.Parallel()
+
+		client, _, _ := newGatedClient(t, func(int) (*http.Response, error) {
+			return jsonResponse(http.StatusOK, apisBody(CloudExtensionGroup)), nil
+		})
+
+		if err := client.Cloud.EnsureAvailable(context.Background()); err != nil {
+			t.Errorf("EnsureAvailable() error = %v, want nil", err)
+		}
+	})
+
+	t.Run("shares its probe with the operations that follow", func(t *testing.T) {
+		t.Parallel()
+
+		// Checking first must not cost an extra round trip, or a short-lived
+		// process pays for the reassurance on every command it runs.
+		client, transport, _ := newGatedClient(t, func(int) (*http.Response, error) {
+			return jsonResponse(http.StatusOK, apisBody(CloudExtensionGroup)), nil
+		})
+
+		ctx := context.Background()
+		if err := client.Cloud.EnsureAvailable(ctx); err != nil {
+			t.Fatalf("EnsureAvailable() error = %v", err)
+		}
+		if _, err := client.Cloud.Connections.List(ctx); err != nil {
+			t.Fatalf("List() error = %v", err)
+		}
+
+		if got := transport.probes(); got != 1 {
+			t.Errorf("GET /apis requests = %d, want 1 shared between the check and the call", got)
+		}
+	})
+}

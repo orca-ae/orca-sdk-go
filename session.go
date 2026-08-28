@@ -359,6 +359,22 @@ func (s SessionService) Delete(ctx context.Context, sessionID string, opts ...op
 	return &deleted, nil
 }
 
+// Outcome returns the session's graded outcome.
+//
+// The result is nil when the session has no outcome yet: the contract marks the
+// whole response nullable, and a session that has not been graded is a normal
+// state rather than a failure. Callers must check for nil before reading it.
+func (s SessionService) Outcome(ctx context.Context, sessionID string, opts ...option.RequestOption) (*OutcomeEvaluation, error) {
+	// Decoded through a pointer so a null body stays distinguishable from an
+	// outcome whose every field happens to be empty.
+	var outcome *OutcomeEvaluation
+	path := "v1/sessions/" + url.PathEscape(sessionID) + "/outcome"
+	if err := s.client.GetJSON(ctx, path, &outcome, opts...); err != nil {
+		return nil, err
+	}
+	return outcome, nil
+}
+
 // Archive archives a session and returns it.
 func (s SessionService) Archive(ctx context.Context, sessionID string, opts ...option.RequestOption) (*Session, error) {
 	var session Session

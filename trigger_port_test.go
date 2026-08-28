@@ -3,6 +3,7 @@
 package orca
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"os"
@@ -416,5 +417,31 @@ func TestTriggerContractCoverage(t *testing.T) {
 		if !slices.Contains(operations, operation) {
 			t.Errorf("the SDK implements %s but the spec does not declare it", operation)
 		}
+	}
+}
+
+func TestSkillVersionDownload(t *testing.T) {
+	t.Parallel()
+
+	client, transport := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, "PK\x03\x04zip-bytes"), nil
+	})
+
+	var buf bytes.Buffer
+	err := client.Skills.Versions.Download(context.Background(), "skill/slash", "v1/v2", &buf)
+	if err != nil {
+		t.Fatalf("Versions.Download() error = %v", err)
+	}
+
+	call := transport.Only(t)
+	want := "/v1/skills/skill%2Fslash/versions/v1%2Fv2/content"
+	if got := call.Path(); got != want {
+		t.Errorf("path = %q, want %q", got, want)
+	}
+	if got := call.Header.Get("Accept"); got != "application/zip" {
+		t.Errorf("Accept = %q, want application/zip", got)
+	}
+	if got := buf.String(); got != "PK\x03\x04zip-bytes" {
+		t.Errorf("body = %q, want the archive bytes unchanged", got)
 	}
 }
