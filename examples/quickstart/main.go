@@ -1,14 +1,14 @@
-// Command quickstart probes a deployment: what core API versions it serves,
-// whether it is healthy, and which extension groups it advertises.
+// Command quickstart creates an agent, starts a session, sends it a message,
+// and follows the reply.
 //
-// The discovery step matters because the StreamNative Cloud extension surface
-// is optional. A deployment that does not advertise cloud.sn.io is a normal,
-// fully-functional engine - it simply has no connections to list - so this
-// checks before calling instead of treating the 404 as a failure.
+// It is the shortest path from an empty deployment to a running agent, and
+// shows the four things every other example builds on: typed resources, request
+// options, streaming, and typed errors.
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 
@@ -21,44 +21,66 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	ctx := context.Background()
 
-	versions, err := client.GetAPIVersions(ctx)
+	agent, err := client.Agents.Create(ctx, orca.AgentNewParams{
+		Model: orca.Model("claude-sonnet-4-6"),
+		Name:  "quickstart-agent",
+	})
 	if err != nil {
-		log.Fatalf("reading API versions: %v", err)
+		log.Fatalf("creating the agent: %v", err)
 	}
-	fmt.Printf("core versions: %v (preferred %s)\n", versions.Versions, versions.PreferredVersion)
+	fmt.Printf("agent:   %s\n", agent.ID)
 
-	health, err := client.GetHealthz(ctx)
+	session, err := client.Sessions.Create(ctx, orca.SessionNewParams{
+		Agent:         orca.AgentRef(agent.ID),
+		EnvironmentID: environmentID(ctx, client),
+	})
 	if err != nil {
-		log.Fatalf("reading health: %v", err)
+		log.Fatalf("creating the session: %v", err)
 	}
-	fmt.Printf("health: %s (%s)\n", health.Status, health.Service)
+	fmt.Printf("session: %s\n", session.ID)
 
-	groups, err := client.GetAPIGroups(ctx)
-	if err != nil {
-		log.Fatalf("reading API groups: %v", err)
-	}
-	if len(groups.Groups) == 0 {
-		fmt.Println("extensions: none installed")
-		return
-	}
-	for _, group := range groups.Groups {
-		fmt.Printf("extension group: %s (preferred %s)\n", group.Name, group.PreferredVersion.GroupVersion)
-	}
+	// The handle binds the session id once, so the calls below do not repeat it.
+	handle := client.Session(session.ID)
 
-	if !groups.HasGroup(orca.CloudExtensionGroup) {
-		fmt.Printf("extensions: %s not available on this deployment\n", orca.CloudExtensionGroup)
-		return
+	if _, err := handle.Events.Send(ctx, []orca.SessionEventParam{
+		orca.UserMessage("In one sentence: what is a session?"),
+	}); err != nil {
+		log.Fatalf("sending the message: %v", err)
 	}
 
-	connections, err := orca.NewConnectionsClient(client).List(ctx)
+	stream := handle.Events.Stream(ctx, orca.SessionEventStreamParams{})
+	defer stream.Close()
+
+	for stream.Next() {
+		event := stream.Current()
+		fmt.Printf("event:   %s\n", event.Type)
+		if event.Type == "agent.message" {
+			break
+		}
+	}
+	if err := stream.Err(); err != nil {
+		log.Fatalf("streaming events: %v", err)
+	}
+}
+
+// environmentID returns the first environment the deployment offers.
+//
+// A session needs one, and which one is a deployment detail rather than
+// something an example should hard-code.
+func environmentID(ctx context.Context, client *orca.Client) string {
+	page, err := client.Environments.List(ctx, orca.EnvironmentListParams{})
 	if err != nil {
-		log.Fatalf("listing connections: %v", err)
+		var notFound *orca.NotFoundError
+		if errors.As(err, &notFound) {
+			log.Fatal("this deployment serves no environments")
+		}
+		log.Fatalf("listing environments: %v", err)
 	}
-	fmt.Printf("connections: %d\n", len(connections))
-	for _, connection := range connections {
-		fmt.Printf("  %s (%s)\n", connection.Name, connection.Spec.Type)
+	items := page.Items()
+	if len(items) == 0 {
+		log.Fatal("no environments exist yet; create one before running this example")
 	}
+	return items[0].ID
 }

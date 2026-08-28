@@ -5,13 +5,14 @@ pointer here.
 
 ## 0. Status
 
-This SDK is mid-restructure, from the flat client lifted out of `orca-cli` into
-the layered shape described below. Sections marked **(target)** describe where
-the code is going; check what actually exists before following them literally.
+The layered structure described below is in place, and the core and cloud
+surfaces are typed. `api.md` is the generated index; `docs/surface-status.md`
+says what each surface is for and where the contract has a sharp edge.
 
-`go test -v ./... 2>&1 | grep -c SKIP` reports the outstanding work: every skip
-names a capability the ported test suite specifies and the SDK does not yet
-implement.
+`go test -v ./... 2>&1 | grep -c -- '--- SKIP'` reports what still skips. What
+remains is credential-gated integration tests, which run against a live
+deployment, and a handful of TypeScript runtime behaviours with no Go analogue.
+Neither is outstanding work.
 
 ## 1. Source of truth
 
@@ -40,7 +41,7 @@ Apply the overlay's portability rules to core APIs:
 
 When a spec changes, the SDK changes — not the other way around.
 
-## 2. Project layout (target)
+## 2. Project layout
 
 ```
 *.go                 One file per resource, flat at the root: agent.go,
@@ -71,7 +72,7 @@ File naming: lowercase, no underscores or hyphens, matching the resource path �
 `memorystorememoryversion.go` for `memory_stores/{id}/memory_versions`. Sub-
 resources are separate files, not subdirectories.
 
-## 3. Service pattern (target)
+## 3. Service pattern
 
 ```go
 type AgentService struct {
@@ -140,7 +141,7 @@ would still resolve core paths through the alias while silently breaking every
 `/apis/...` extension call. That shim exists for pre-existing callers — do not
 write new code that depends on it.
 
-## 6. Type style (target)
+## 6. Type style
 
 - Co-locate request, response, and shared types with the service in one file.
 - Naming: `Agent` for the entity, `AgentNewParams` / `AgentUpdateParams` /
@@ -156,7 +157,7 @@ write new code that depends on it.
   sending it fails against the cloud's skill provider dialect. Beta opt-in is a
   header concern: `option.WithHeader("orca-beta", ...)`.
 
-## 7. Pagination (target)
+## 7. Pagination
 
 Two cursor dialects share one `PageCursor[T]`:
 
@@ -185,7 +186,7 @@ File, skill, and cloud function/package endpoints use `multipart/form-data`.
 into a `Content-Disposition` header — a resource name is user input, and an
 unescaped quote or newline there is header injection.
 
-## 10. Errors (target)
+## 10. Errors
 
 `internal/apierror.Error` is the root, with a type per status. Errors carry the
 status code, request ID, and response headers, so a caller can read `Retry-After`
