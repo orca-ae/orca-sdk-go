@@ -14,6 +14,8 @@ import (
 	"github.com/orca-ae/orca-sdk-go/internal/apierror"
 	"github.com/orca-ae/orca-sdk-go/internal/requestconfig"
 	"github.com/orca-ae/orca-sdk-go/option"
+	"github.com/orca-ae/orca-sdk-go/packages/pagination"
+	"github.com/orca-ae/orca-sdk-go/packages/ssestream"
 )
 
 const (
@@ -274,13 +276,37 @@ func (c *Client) GetStream(
 		return apierror.Validationf("response handler is required")
 	}
 
-	cfg, err := c.cfg.With(opts...)
+	body, endpoint, err := c.openStream(ctx, path, accept, opts...)
 	if err != nil {
 		return err
 	}
+	defer body.Close()
+
+	if err := handle(body); err != nil {
+		return apierror.Errorf("failed to stream %s %s response: %w", http.MethodGet, endpoint, err)
+	}
+
+	return nil
+}
+
+// openStream performs a GET and returns the response body, unread.
+//
+// The caller owns the body and must close it: closing is also what releases the
+// request's deadline, so a stream abandoned without a Close leaves the attempt
+// running until its timeout expires.
+func (c *Client) openStream(
+	ctx context.Context,
+	path string,
+	accept string,
+	opts ...option.RequestOption,
+) (io.ReadCloser, string, error) {
+	cfg, err := c.cfg.With(opts...)
+	if err != nil {
+		return nil, "", err
+	}
 	endpoint, err := cfg.ResolveURL(path)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 
 	if strings.TrimSpace(accept) == "" {
@@ -290,23 +316,86 @@ func (c *Client) GetStream(
 
 	resp, err := cfg.Do(ctx, http.MethodGet, endpoint, nil, header)
 	if err != nil {
-		return err
+		return nil, endpoint, err
 	}
-	defer resp.Body.Close()
 
 	if !isSuccess(resp.StatusCode) {
+		defer resp.Body.Close()
 		responseBytes, readErr := readResponseBodyLimited(resp.Body, defaultJSONResponseBodyLimit)
 		if readErr != nil {
-			return apierror.Errorf("failed to read %s %s response: %w", http.MethodGet, endpoint, readErr)
+			return nil, endpoint, apierror.Errorf("failed to read %s %s response: %w", http.MethodGet, endpoint, readErr)
 		}
-		return apierror.FromResponse(http.MethodGet, endpoint, resp.StatusCode, string(responseBytes), resp.Header)
+		return nil, endpoint, apierror.FromResponse(http.MethodGet, endpoint, resp.StatusCode, string(responseBytes), resp.Header)
 	}
 
-	if err := handle(resp.Body); err != nil {
-		return apierror.Errorf("failed to stream %s %s response: %w", http.MethodGet, endpoint, err)
+	return resp.Body, endpoint, nil
+}
+
+// ListPage fetches one page of a paginated list.
+//
+// Like [StreamEvents] it is a function rather than a method, because Go does
+// not allow methods to introduce type parameters. The returned cursor fetches
+// its successors through this same client, so retries, credentials and
+// per-call options apply to every page and not just the first:
+//
+//	page, err := orca.ListPage[Agent](ctx, client, "v1/agents")
+//	if err != nil {
+//		return err
+//	}
+//	for agent, err := range page.All(ctx) {
+//		if err != nil {
+//			return err
+//		}
+//		...
+//	}
+func ListPage[T any](
+	ctx context.Context,
+	client *Client,
+	path string,
+	opts ...option.RequestOption,
+) (*pagination.PageCursor[T], error) {
+	cfg, err := client.cfg.With(opts...)
+	if err != nil {
+		return nil, err
+	}
+	// Resolved up front so the cursor holds an absolute URL to derive the next
+	// page's query from. Re-resolving an absolute URL is a no-op, so the
+	// per-page fetch below stays a normal request.
+	endpoint, err := cfg.ResolveURL(path)
+	if err != nil {
+		return nil, err
 	}
 
-	return nil
+	get := func(ctx context.Context, rawURL string, out any) error {
+		return client.GetJSON(ctx, rawURL, out, opts...)
+	}
+	return pagination.Fetch[T](ctx, endpoint, get)
+}
+
+// StreamEvents opens a Server-Sent Events stream at path and decodes each
+// event's payload as T.
+//
+// It is a function rather than a method because Go does not allow methods to
+// introduce their own type parameters.
+//
+// The returned stream must be closed. A failure opening the stream is carried
+// on the stream itself rather than returned separately, so the calling shape is
+// the same whether or not the request succeeded:
+//
+//	stream := orca.StreamEvents[SessionEvent](ctx, client, path)
+//	defer stream.Close()
+//	for stream.Next() {
+//		event := stream.Current()
+//	}
+//	if err := stream.Err(); err != nil { ... }
+func StreamEvents[T any](
+	ctx context.Context,
+	client *Client,
+	path string,
+	opts ...option.RequestOption,
+) *ssestream.Stream[T] {
+	body, _, err := client.openStream(ctx, path, "text/event-stream", opts...)
+	return ssestream.NewStream[T](ctx, body, err)
 }
 
 // PostMultipart performs a POST request with a multipart/form-data request body.

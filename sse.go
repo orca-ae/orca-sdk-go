@@ -4,121 +4,90 @@ package orca
 
 import (
 	"bufio"
-	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
-	"strconv"
 	"strings"
+
+	"github.com/orca-ae/orca-sdk-go/internal/apierror"
+	"github.com/orca-ae/orca-sdk-go/packages/ssestream"
 )
 
-type managedAgentSSEEvent struct {
-	Event string
-	ID    string
-	Retry *int
-	Data  string
-}
-
+// renderManagedAgentSSE transcodes a Server-Sent Events stream to NDJSON: one
+// JSON value per line.
+//
+// The wire-format parsing lives in packages/ssestream; this is only the
+// rendering half. Keeping them apart is what let the parser be fixed against
+// the specification without touching the output shape command-line callers
+// depend on.
 func renderManagedAgentSSE(writer io.Writer, reader io.Reader) error {
 	if writer == nil {
-		return fmt.Errorf("response writer is required")
+		return apierror.Validationf("response writer is required")
 	}
 	if reader == nil {
-		return fmt.Errorf("event stream reader is required")
+		return apierror.Validationf("event stream reader is required")
 	}
 
-	scanner := bufio.NewScanner(reader)
-	buffer := make([]byte, 0, 64*1024)
-	scanner.Buffer(buffer, 1024*1024)
-
-	var event managedAgentSSEEvent
-	var data bytes.Buffer
-	dispatch := func() error {
-		if data.Len() == 0 && event.Event == "" && event.ID == "" && event.Retry == nil {
-			return nil
-		}
-		event.Data = strings.TrimSuffix(data.String(), "\n")
-		if err := writeManagedAgentSSEEvent(writer, event); err != nil {
+	decoder := ssestream.NewDecoder(bufio.NewReader(reader))
+	for decoder.Next() {
+		if err := writeManagedAgentSSEEvent(writer, decoder.Event()); err != nil {
 			return err
 		}
-		event = managedAgentSSEEvent{}
-		data.Reset()
-		return nil
 	}
-
-	for scanner.Scan() {
-		line := strings.TrimSuffix(scanner.Text(), "\r")
-		if line == "" {
-			if err := dispatch(); err != nil {
-				return err
-			}
-			continue
-		}
-		if strings.HasPrefix(line, ":") {
-			continue
-		}
-
-		field, value, ok := strings.Cut(line, ":")
-		if ok && strings.HasPrefix(value, " ") {
-			value = strings.TrimPrefix(value, " ")
-		}
-		if !ok {
-			field = line
-			value = ""
-		}
-		switch field {
-		case "event":
-			event.Event = value
-		case "id":
-			event.ID = value
-		case "retry":
-			retry, err := strconv.Atoi(value)
-			if err != nil {
-				return fmt.Errorf("invalid SSE retry value %q: %w", value, err)
-			}
-			event.Retry = &retry
-		case "data":
-			data.WriteString(value)
-			data.WriteByte('\n')
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return err
-	}
-	return dispatch()
+	return decoder.Err()
 }
 
-func writeManagedAgentSSEEvent(writer io.Writer, event managedAgentSSEEvent) error {
-	var data interface{} = event.Data
-	trimmedData := strings.TrimSpace(event.Data)
-	if trimmedData != "" {
-		var decoded interface{}
-		if err := json.Unmarshal([]byte(trimmedData), &decoded); err == nil {
-			data = decoded
-		}
-	}
-
+// writeManagedAgentSSEEvent renders one frame as a single JSON line.
+//
+// A frame carrying only a payload is written as that payload alone, so the
+// common case pipes straight into tools that expect one object per line. A
+// frame with framing fields is wrapped so none of them are lost.
+func writeManagedAgentSSEEvent(writer io.Writer, event ssestream.Event) error {
 	var out interface{}
-	if event.Event == "" && event.ID == "" && event.Retry == nil {
-		out = data
+
+	if event.Type == "" && event.ID == "" && !event.HasRetry {
+		if !event.HasData {
+			return nil
+		}
+		out = decodeSSEPayload(event.Data)
 	} else {
-		wrapped := map[string]interface{}{"data": data}
-		if event.Event != "" {
-			wrapped["event"] = event.Event
+		wrapped := map[string]interface{}{}
+		if event.Type != "" {
+			wrapped["event"] = event.Type
 		}
 		if event.ID != "" {
 			wrapped["id"] = event.ID
 		}
-		if event.Retry != nil {
-			wrapped["retry"] = *event.Retry
+		if event.HasRetry {
+			wrapped["retry"] = event.Retry
+		}
+		// Only present when the frame actually carried a data field: a
+		// sentinel such as "event: done" has no payload, and inventing an
+		// empty one reports something the server never sent.
+		if event.HasData {
+			wrapped["data"] = decodeSSEPayload(event.Data)
 		}
 		out = wrapped
 	}
 
 	encoded, err := json.Marshal(out)
 	if err != nil {
-		return err
+		return apierror.Errorf("failed to encode stream event: %w", err)
 	}
 	_, err = writer.Write(append(encoded, '\n'))
 	return err
+}
+
+// decodeSSEPayload embeds a JSON payload as JSON rather than as a quoted
+// string, so the NDJSON output stays queryable. Anything that does not parse is
+// passed through as a string.
+func decodeSSEPayload(data []byte) interface{} {
+	trimmed := strings.TrimSpace(string(data))
+	if trimmed == "" {
+		return string(data)
+	}
+	var decoded interface{}
+	if err := json.Unmarshal([]byte(trimmed), &decoded); err == nil {
+		return decoded
+	}
+	return string(data)
 }

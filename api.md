@@ -228,6 +228,8 @@ func (t *FlexibleTimestamp) UnmarshalJSON(data []byte) error
 
 ```go
 func DecodeSSE(writer io.Writer, reader io.Reader) error
+func ListPage[T any](
+func StreamEvents[T any](
 func New(opts ...option.RequestOption) (*Client, error)
 func ConnectionConfigFromConnection(connection Connection) ConnectionConfig
 func ToConnectionList(configs []ConnectionConfig) ConnectionList
