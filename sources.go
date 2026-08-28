@@ -15,7 +15,7 @@ type SourcesClient struct {
 // NewSourcesClient creates a workspace sources client. Sources are a StreamNative Cloud extension,
 // served under CloudExtensionBasePath.
 func NewSourcesClient(client *Client) *SourcesClient {
-	return &SourcesClient{client: client.WithPathPrefix(CloudExtensionBasePath)}
+	return &SourcesClient{client: client.scoped(CloudExtensionBasePath)}
 }
 
 // List returns all source names visible in the current workspace.

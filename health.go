@@ -11,7 +11,7 @@ type HealthClient struct {
 
 // NewHealthClient creates a registry health client under CloudExtensionBasePath.
 func NewHealthClient(client *Client) *HealthClient {
-	return &HealthClient{client: client.WithPathPrefix(CloudExtensionBasePath)}
+	return &HealthClient{client: client.scoped(CloudExtensionBasePath)}
 }
 
 // Health reports aggregate registry health.

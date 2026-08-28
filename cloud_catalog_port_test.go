@@ -318,11 +318,11 @@ func TestCloudAPIResourcesDecodesTheGroupResourceList(t *testing.T) {
 // TestCloudDiscoveryHealthCatalogGating ports "gates %s before its API request".
 func TestCloudDiscoveryHealthCatalogGating(t *testing.T) {
 	t.Parallel()
-	t.Skip(cloudGatingUnimplemented)
+	assertServiceGated(t, "Cloud.Catalog", func(c *Client) any { return c.Cloud.Catalog })
 }
 
 // TestCloudProvidersGating ports "Providers cloud extension gating".
 func TestCloudProvidersGating(t *testing.T) {
 	t.Parallel()
-	t.Skip(cloudGatingUnimplemented)
+	assertServiceGated(t, "Cloud.Agents", func(c *Client) any { return c.Cloud.Agents })
 }

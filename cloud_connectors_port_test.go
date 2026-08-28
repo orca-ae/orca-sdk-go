@@ -732,11 +732,19 @@ func TestCloudKafkaConnectPatchConfigIssuesNoRequest(t *testing.T) {
 // TestCloudSinkAndSourceGating ports "gates %s before the connector API request".
 func TestCloudSinkAndSourceGating(t *testing.T) {
 	t.Parallel()
-	t.Skip(cloudGatingUnimplemented)
+
+	t.Run("sinks", func(t *testing.T) {
+		t.Parallel()
+		assertServiceGated(t, "Cloud.Connectors.Sinks", func(c *Client) any { return c.Cloud.Connectors.Sinks })
+	})
+	t.Run("sources", func(t *testing.T) {
+		t.Parallel()
+		assertServiceGated(t, "Cloud.Connectors.Sources", func(c *Client) any { return c.Cloud.Connectors.Sources })
+	})
 }
 
 // TestCloudKafkaConnectGating ports "gates %s before the Kafka API request".
 func TestCloudKafkaConnectGating(t *testing.T) {
 	t.Parallel()
-	t.Skip(cloudGatingUnimplemented)
+	assertServiceGated(t, "Cloud.Connectors.Kafka", func(c *Client) any { return c.Cloud.Connectors.Kafka })
 }

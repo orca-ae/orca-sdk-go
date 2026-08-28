@@ -3,10 +3,19 @@
 package orca
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"reflect"
+	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/orca-ae/orca-sdk-go/option"
 )
 
 // Ported from orca-sdk-typescript tests/client.test.ts,
@@ -14,87 +23,276 @@ import (
 // assertCloudExtensionUnavailable helper in
 // tests/api-resources/cloud/helpers.ts.
 //
-// The TypeScript client gates every cloud extension call: before a resource
-// request goes out it resolves GET /apis once, caches the result, and raises a
-// distinct ExtensionNotAvailableError when the cloud.sn.io group is not
-// advertised - so a deployment without the extension produces a clear
-// diagnosis instead of a bare 404 from an unrelated path.
-//
-// This SDK ships the discovery half of that (Client.GetAPIGroups and
-// APIGroupList.HasGroup) but not the gate: no cached probe, no distinct error
-// type, and no automatic check inside the resource clients. The gate lives one
-// layer up, in orca-cli's requireCloudExtension, which was not copied here.
-//
-// The specification is kept below so the gap is enumerable rather than
-// forgotten: `go test -v -run Gating ./... | grep 'not implemented'` lists it.
+// Every cloud extension call is gated: before a resource request goes out the
+// client resolves GET /apis once, caches the result, and raises
+// ExtensionNotAvailableError when the cloud.sn.io group is not advertised. A
+// deployment without the extension therefore produces a clear diagnosis
+// instead of a bare 404 from a path the caller has no reason to doubt.
 
-// cloudGatingUnimplemented is the single skip reason for the ported gating
-// specifications. The sibling cloud_*_port_test.go files share it for their
-// per-resource "gates X before its API request" cases.
-const cloudGatingUnimplemented = "not implemented: cloud extension gating - " +
-	"there is no ensureExtensionAvailable, no ExtensionNotAvailableError, and no automatic " +
-	"GET /apis probe before a cloud resource request; a caller wanting the TypeScript SDK's " +
-	"behaviour must call Client.GetAPIGroups and APIGroupList.HasGroup itself"
+// gatingTransport answers /apis with a scripted response and every other path
+// with an empty success, counting each so a test can prove how many probes
+// happened.
+type gatingTransport struct {
+	mu        sync.Mutex
+	apisCalls int
+	other     []string
+	respond   func(int) (*http.Response, error)
+}
 
-// TestCloudExtensionGatingSpecification is the ported describe block. Each case
-// names the capability it needs, so the skip output reads as a work list.
-func TestCloudExtensionGatingSpecification(t *testing.T) {
+func (g *gatingTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	g.mu.Lock()
+	if req.URL.Path == "/apis" {
+		g.apisCalls++
+		n := g.apisCalls
+		g.mu.Unlock()
+		return g.respond(n)
+	}
+	g.other = append(g.other, req.URL.Path)
+	g.mu.Unlock()
+	return jsonResponse(http.StatusOK, `[]`), nil
+}
+
+func (g *gatingTransport) probes() int {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.apisCalls
+}
+
+func (g *gatingTransport) resourceCalls() []string {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return append([]string(nil), g.other...)
+}
+
+// newGatedClient builds a client whose /apis probe is scripted by respond, and
+// returns the warning writer's buffer so a test can assert on diagnostics.
+func newGatedClient(tb testing.TB, respond func(int) (*http.Response, error)) (*Client, *gatingTransport, *bytes.Buffer) {
+	tb.Helper()
+	transport := &gatingTransport{respond: respond}
+	warnings := &bytes.Buffer{}
+	client, err := New(
+		option.WithBaseURL(testBaseURL),
+		option.WithAuthToken("test-key"),
+		option.WithHTTPClient(&http.Client{Transport: transport}),
+		option.WithWarningWriter(warnings),
+		option.WithMaxRetries(0),
+	)
+	if err != nil {
+		tb.Fatalf("New() error = %v", err)
+	}
+	return client, transport, warnings
+}
+
+func apisBody(groups ...string) string {
+	entries := make([]string, 0, len(groups))
+	for _, group := range groups {
+		entries = append(entries, fmt.Sprintf(`{"name":%q,"versions":[]}`, group))
+	}
+	return fmt.Sprintf(`{"kind":"APIGroupList","groups":[%s]}`, strings.Join(entries, ","))
+}
+
+func TestCloudExtensionGating(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name   string
-		reason string
+	// The three ways a deployment can decline to serve the extension. All of
+	// them have to arrive as the same distinct error, or a caller cannot tell
+	// "this deployment cannot do that" from "that resource does not exist".
+	unavailable := []struct {
+		name       string
+		respond    func(int) (*http.Response, error)
+		wantReason string
 	}{
 		{
-			name: "throws ExtensionNotAvailableError rather than a surfaced 404 when groups is empty",
-			reason: "not implemented: a distinct extension-not-available error; an empty group list is " +
-				"reported only as HasGroup() == false, which no resource client consults",
+			name: "groups is empty",
+			respond: func(int) (*http.Response, error) {
+				return jsonResponse(http.StatusOK, apisBody()), nil
+			},
+			wantReason: "advertises no extension groups",
 		},
 		{
-			name: "throws ExtensionNotAvailableError when groups exist but do not include the target",
-			reason: "not implemented: a distinct extension-not-available error; a non-matching group list " +
-				"is reported only as HasGroup() == false, which no resource client consults",
+			name: "groups exist but do not include the target",
+			respond: func(int) (*http.Response, error) {
+				return jsonResponse(http.StatusOK, apisBody("some.other.group")), nil
+			},
+			wantReason: "some.other.group",
 		},
 		{
-			name: "throws ExtensionNotAvailableError, not NotFoundError, when /apis itself 404s",
-			reason: "not implemented: GetAPIGroups surfaces the raw *HTTPError with StatusCode 404, so a " +
-				"deployment predating discovery is indistinguishable from a missing extension",
-		},
-		{
-			name: "logs a version warning when /apis 404s (pre-discovery deployment)",
-			reason: "not implemented: there is no diagnostic channel for discovery; the warning writer " +
-				"passed at construction only carries the legacy base-URL deprecation notice",
-		},
-		{
-			name:   "does not warn when /apis returns 200 with an empty groups array",
-			reason: "not implemented: the discovery warning this case bounds does not exist to be suppressed",
-		},
-		{
-			name: "caches a successful discovery result across repeated calls",
-			reason: "not implemented: discovery result caching; every GetAPIGroups call issues a fresh " +
-				"GET /apis",
-		},
-		{
-			name:   "shares one in-flight discovery request across concurrent callers",
-			reason: "not implemented: discovery single-flight; concurrent GetAPIGroups calls each issue a request",
-		},
-		{
-			name:   "does not cache a failed discovery attempt so the next call retries",
-			reason: "not implemented: discovery result caching, so there is no negative-caching rule to assert",
-		},
-		{
-			name: "gates every cloud resource request behind discovery",
-			reason: "not implemented: resource clients issue their request immediately; " +
-				"nothing probes GET /apis first",
+			name: "/apis itself 404s",
+			respond: func(int) (*http.Response, error) {
+				return jsonResponse(http.StatusNotFound, `{}`), nil
+			},
+			wantReason: "does not serve an extension discovery endpoint",
 		},
 	}
 
-	for _, tc := range tests {
+	for _, tc := range unavailable {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			t.Skip(tc.reason)
+
+			client, transport, _ := newGatedClient(t, tc.respond)
+
+			_, err := client.Cloud.Connections.List(context.Background())
+
+			var unavailableErr *ExtensionNotAvailableError
+			if !errors.As(err, &unavailableErr) {
+				t.Fatalf("error = %v (%T), want *ExtensionNotAvailableError", err, err)
+			}
+			if unavailableErr.Group != CloudExtensionGroup {
+				t.Errorf("Group = %q, want %q", unavailableErr.Group, CloudExtensionGroup)
+			}
+			if !strings.Contains(unavailableErr.Reason, tc.wantReason) {
+				t.Errorf("Reason = %q, want it to mention %q", unavailableErr.Reason, tc.wantReason)
+			}
+
+			// A 404 from /apis must not reach the caller as a NotFoundError:
+			// that reads as a missing resource, which is a different problem
+			// with a different fix.
+			var notFound *NotFoundError
+			if errors.As(err, &notFound) {
+				t.Error("error is also a *NotFoundError, want the extension error to replace it")
+			}
+
+			// The resource request must never have gone out.
+			if got := transport.resourceCalls(); len(got) != 0 {
+				t.Errorf("resource requests = %v, want none - the gate runs first", got)
+			}
 		})
 	}
+
+	t.Run("a 404 from /apis warns that the deployment predates discovery", func(t *testing.T) {
+		t.Parallel()
+
+		client, _, warnings := newGatedClient(t, func(int) (*http.Response, error) {
+			return jsonResponse(http.StatusNotFound, `{}`), nil
+		})
+
+		_, _ = client.Cloud.Connections.List(context.Background())
+
+		if !strings.Contains(warnings.String(), "predates extension discovery") {
+			t.Errorf("warnings = %q, want a version hint", warnings.String())
+		}
+	})
+
+	t.Run("an empty groups array does not warn", func(t *testing.T) {
+		t.Parallel()
+
+		// A deployment with no extensions installed is normal and fully
+		// functional. Warning about it would train callers to ignore warnings.
+		client, _, warnings := newGatedClient(t, func(int) (*http.Response, error) {
+			return jsonResponse(http.StatusOK, apisBody()), nil
+		})
+
+		_, _ = client.Cloud.Connections.List(context.Background())
+
+		if warnings.Len() != 0 {
+			t.Errorf("warnings = %q, want none", warnings.String())
+		}
+	})
+
+	t.Run("a successful discovery is cached across calls", func(t *testing.T) {
+		t.Parallel()
+
+		client, transport, _ := newGatedClient(t, func(int) (*http.Response, error) {
+			return jsonResponse(http.StatusOK, apisBody(CloudExtensionGroup)), nil
+		})
+
+		ctx := context.Background()
+		for range 3 {
+			if _, err := client.Cloud.Connections.List(ctx); err != nil {
+				t.Fatalf("List() error = %v", err)
+			}
+		}
+
+		if got := transport.probes(); got != 1 {
+			t.Errorf("GET /apis requests = %d, want 1 - the result is cached", got)
+		}
+		if got := len(transport.resourceCalls()); got != 3 {
+			t.Errorf("resource requests = %d, want 3", got)
+		}
+	})
+
+	t.Run("the cache is shared across scoped clones", func(t *testing.T) {
+		t.Parallel()
+
+		// Cloning a client to add a header or scope a path is talking to the
+		// same deployment, so it must not restart the probe.
+		client, transport, _ := newGatedClient(t, func(int) (*http.Response, error) {
+			return jsonResponse(http.StatusOK, apisBody(CloudExtensionGroup)), nil
+		})
+
+		ctx := context.Background()
+		if _, err := client.Cloud.Connections.List(ctx); err != nil {
+			t.Fatalf("List() error = %v", err)
+		}
+		scoped := client.WithDefaultHeader("X-Tenant-Id", "t1")
+		if _, err := scoped.Cloud.Connections.List(ctx); err != nil {
+			t.Fatalf("List() on clone error = %v", err)
+		}
+
+		if got := transport.probes(); got != 1 {
+			t.Errorf("GET /apis requests = %d, want 1", got)
+		}
+	})
+
+	t.Run("concurrent callers share one in-flight probe", func(t *testing.T) {
+		t.Parallel()
+
+		// Without single-flighting, a program that fans out cloud calls at
+		// startup sends one discovery request per goroutine.
+		release := make(chan struct{})
+		client, transport, _ := newGatedClient(t, func(int) (*http.Response, error) {
+			<-release
+			return jsonResponse(http.StatusOK, apisBody(CloudExtensionGroup)), nil
+		})
+
+		ctx := context.Background()
+		var wg sync.WaitGroup
+		for range 8 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, _ = client.Cloud.Connections.List(ctx)
+			}()
+		}
+		// Give every goroutine time to reach the gate before the probe answers.
+		time.Sleep(20 * time.Millisecond)
+		close(release)
+		wg.Wait()
+
+		if got := transport.probes(); got != 1 {
+			t.Errorf("GET /apis requests = %d, want 1 for 8 concurrent callers", got)
+		}
+	})
+
+	t.Run("a failed discovery is not cached", func(t *testing.T) {
+		t.Parallel()
+
+		// A probe that failed says nothing about the deployment. Remembering it
+		// would turn one bad moment into a permanent refusal to make any cloud
+		// call for the life of the process.
+		client, transport, _ := newGatedClient(t, func(n int) (*http.Response, error) {
+			if n == 1 {
+				return nil, errors.New("dial tcp: connection refused")
+			}
+			return jsonResponse(http.StatusOK, apisBody(CloudExtensionGroup)), nil
+		})
+
+		ctx := context.Background()
+		if _, err := client.Cloud.Connections.List(ctx); err == nil {
+			t.Fatal("first List() error = nil, want the transport failure")
+		}
+		if _, err := client.Cloud.Connections.List(ctx); err != nil {
+			t.Fatalf("second List() error = %v, want the retry to succeed", err)
+		}
+		if got := transport.probes(); got != 2 {
+			t.Errorf("GET /apis requests = %d, want 2 - the failure must not be cached", got)
+		}
+	})
+
+	t.Run("every cloud resource is gated", func(t *testing.T) {
+		t.Parallel()
+		assertServiceGated(t, "Cloud", func(c *Client) any { return c.Cloud })
+	})
 }
 
 // TestCloudExtensionDiscoveryPrimitives covers the part of the specification
@@ -173,10 +371,109 @@ func TestCloudExtensionDiscoveryPrimitives(t *testing.T) {
 	}
 }
 
-// TestCloudExtensionDiscoveryIsNotCached records the concrete shape of the
-// caching gap: three probes, three requests. The TypeScript client answers the
-// second and third from its cache.
-func TestCloudExtensionDiscoveryIsNotCached(t *testing.T) {
+// TestCloudExtensionDiscoveryPrimitiveIsUncached pins that the raw probe stays
+// uncached. GetAPIGroups is the primitive a caller uses to ask the deployment
+// directly; the cache belongs to the gate, so a caller polling for an extension
+// that is being installed sees it appear.
+func TestCloudExtensionDiscoveryPrimitiveIsUncached(t *testing.T) {
 	t.Parallel()
-	t.Skip("not implemented: discovery result caching; each GetAPIGroups call issues its own GET /apis")
+
+	client, transport, _ := newGatedClient(t, func(int) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, apisBody(CloudExtensionGroup)), nil
+	})
+
+	ctx := context.Background()
+	for range 3 {
+		if _, err := client.GetAPIGroups(ctx); err != nil {
+			t.Fatalf("GetAPIGroups() error = %v", err)
+		}
+	}
+	if got := transport.probes(); got != 3 {
+		t.Errorf("GET /apis requests = %d, want 3 - the primitive asks every time", got)
+	}
+}
+
+// assertServiceGated calls every operation reachable from a cloud service and
+// requires each to refuse with [ExtensionNotAvailableError] before sending a
+// request.
+//
+// It walks the tree by reflection rather than listing the operations, because a
+// list goes stale the moment someone adds a method - and an ungated method is a
+// hole that only shows up on a deployment without the extension, which is
+// exactly where nobody is looking.
+func assertServiceGated(t *testing.T, path string, pick func(*Client) any) {
+	t.Helper()
+
+	client, _, _ := newGatedClient(t, func(int) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, apisBody()), nil
+	})
+	walkServiceMethods(t, path, reflect.ValueOf(pick(client)))
+}
+
+func walkServiceMethods(t *testing.T, path string, service reflect.Value) {
+	t.Helper()
+
+	// Sub-services are exported struct fields; operations are methods.
+	if service.Kind() == reflect.Struct {
+		for i := range service.NumField() {
+			field := service.Type().Field(i)
+			if !field.IsExported() || field.Type.Kind() != reflect.Struct {
+				continue
+			}
+			walkServiceMethods(t, path+"."+field.Name, service.Field(i))
+		}
+	}
+
+	for i := range service.NumMethod() {
+		method := service.Type().Method(i)
+		if !method.IsExported() {
+			continue
+		}
+		name := path + "." + method.Name
+		t.Run(name, func(t *testing.T) {
+			results := callWithZeroArgs(t, service.Method(i))
+			if len(results) == 0 {
+				t.Fatalf("%s returned nothing, want an error", name)
+			}
+			last := results[len(results)-1].Interface()
+			err, _ := last.(error)
+			if err == nil {
+				t.Fatalf("%s error = nil, want *ExtensionNotAvailableError", name)
+			}
+			var unavailable *ExtensionNotAvailableError
+			if !errors.As(err, &unavailable) {
+				t.Errorf("%s error = %v (%T), want *ExtensionNotAvailableError", name, err, err)
+			}
+		})
+	}
+}
+
+// callWithZeroArgs invokes fn with a background context and the zero value of
+// every other parameter. The gate runs before any argument is read, so the
+// values only have to type-check.
+func callWithZeroArgs(t *testing.T, fn reflect.Value) []reflect.Value {
+	t.Helper()
+
+	fnType := fn.Type()
+	args := make([]reflect.Value, 0, fnType.NumIn())
+	for i := range fnType.NumIn() {
+		in := fnType.In(i)
+		if fnType.IsVariadic() && i == fnType.NumIn()-1 {
+			break
+		}
+		if in == reflect.TypeOf((*context.Context)(nil)).Elem() {
+			args = append(args, reflect.ValueOf(context.Background()))
+			continue
+		}
+		if in.Kind() == reflect.Interface && in.NumMethod() > 0 {
+			// An io.Writer parameter cannot be a nil interface value.
+			if in.Implements(reflect.TypeOf((*io.Writer)(nil)).Elem()) ||
+				reflect.TypeOf(io.Discard).Implements(in) {
+				args = append(args, reflect.ValueOf(io.Discard))
+				continue
+			}
+		}
+		args = append(args, reflect.Zero(in))
+	}
+	return fn.Call(args)
 }

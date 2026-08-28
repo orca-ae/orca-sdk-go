@@ -194,5 +194,5 @@ func TestCloudConnectionsCreateSendsJSONContentType(t *testing.T) {
 // TestCloudConnectionsGating ports "gates connections before their API request".
 func TestCloudConnectionsGating(t *testing.T) {
 	t.Parallel()
-	t.Skip(cloudGatingUnimplemented)
+	assertServiceGated(t, "Cloud.Connections", func(c *Client) any { return c.Cloud.Connections })
 }

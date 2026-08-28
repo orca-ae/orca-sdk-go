@@ -15,7 +15,7 @@ type SinksClient struct {
 // NewSinksClient creates a workspace sinks client. Sinks are a StreamNative Cloud extension,
 // served under CloudExtensionBasePath.
 func NewSinksClient(client *Client) *SinksClient {
-	return &SinksClient{client: client.WithPathPrefix(CloudExtensionBasePath)}
+	return &SinksClient{client: client.scoped(CloudExtensionBasePath)}
 }
 
 // List returns all sink names visible in the current workspace.

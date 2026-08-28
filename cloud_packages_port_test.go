@@ -217,5 +217,5 @@ func TestCloudPackagesMetadataResponseIsTyped(t *testing.T) {
 // TestCloudPackagesGating ports "gates %s before the package API request".
 func TestCloudPackagesGating(t *testing.T) {
 	t.Parallel()
-	t.Skip(cloudGatingUnimplemented)
+	assertServiceGated(t, "Cloud.Packages", func(c *Client) any { return c.Cloud.Packages })
 }

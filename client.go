@@ -41,6 +41,25 @@ const (
 // Client is the registry HTTP client.
 type Client struct {
 	cfg *requestconfig.RequestConfig
+
+	// discovery is shared with every clone of this client, so scoping a client
+	// to an API group or applying per-call options does not start a second
+	// cache of the same deployment's capabilities.
+	discovery *discoveryCache
+
+	// Cloud is the StreamNative Cloud extension surface. Every call through it
+	// is gated on the deployment advertising the cloud.sn.io group.
+	Cloud CloudService
+}
+
+// newClientFrom builds a client around cfg and wires its resource services.
+func newClientFrom(cfg *requestconfig.RequestConfig, discovery *discoveryCache) *Client {
+	if discovery == nil {
+		discovery = newDiscoveryCache()
+	}
+	client := &Client{cfg: cfg, discovery: discovery}
+	client.Cloud = newCloudService(client)
+	return client
 }
 
 // New returns a client configured by opts.
@@ -65,7 +84,7 @@ func New(opts ...option.RequestOption) (*Client, error) {
 	if cfg.BaseURL == nil {
 		return nil, apierror.Validationf("registry base URL is required")
 	}
-	return &Client{cfg: cfg}, nil
+	return newClientFrom(cfg, nil), nil
 }
 
 // environmentOptions returns the options implied by the environment. They are
@@ -175,7 +194,7 @@ func newLegacyClient(
 	if err != nil {
 		return nil, err
 	}
-	return &Client{cfg: cfg}, nil
+	return newClientFrom(cfg, nil), nil
 }
 
 // stripLegacyBaseURLSuffix removes a trailing legacy suffix from a base-URL
@@ -191,7 +210,7 @@ func (c *Client) With(opts ...option.RequestOption) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{cfg: cfg}, nil
+	return newClientFrom(cfg, c.discovery), nil
 }
 
 // WithDefaultHeader returns a client clone that adds a default header unless
@@ -199,7 +218,7 @@ func (c *Client) With(opts ...option.RequestOption) (*Client, error) {
 func (c *Client) WithDefaultHeader(name, value string) *Client {
 	cfg := c.cfg.Clone()
 	cfg.Header.Set(name, value)
-	return &Client{cfg: cfg}
+	return newClientFrom(cfg, c.discovery)
 }
 
 // WithPathPrefix returns a client clone that resolves every path relative to
@@ -214,13 +233,44 @@ func (c *Client) WithPathPrefix(prefix string) *Client {
 		trimmed += "/"
 	}
 	cfg.PathPrefix = trimmed
-	return &Client{cfg: cfg}
+	return newClientFrom(cfg, c.discovery)
+}
+
+// scoped is WithPathPrefix without the resource services.
+//
+// The cloud services are built from clients scoped to their API group, so
+// building those services from a scoped client would recurse forever. Nothing
+// reached through a scoped client needs the tree, because the gate has already
+// run by the time one is used.
+func (c *Client) scoped(prefix string) *Client {
+	cfg := c.cfg.Clone()
+	trimmed := strings.Trim(prefix, "/")
+	if trimmed != "" {
+		trimmed += "/"
+	}
+	cfg.PathPrefix = trimmed
+	return &Client{cfg: cfg, discovery: c.discovery}
 }
 
 // Options returns the client's request configuration. It is unexported state
 // made reachable for resources in this package; callers configure a client
 // through [option] instead.
 func (c *Client) config() *requestconfig.RequestConfig { return c.cfg }
+
+// getRootJSON performs a GET against the deployment host root, ignoring any
+// path prefix the client is scoped to.
+//
+// Discovery and the core probes live at the root whatever a client is scoped
+// to. Resolving them relative to a prefix asks the wrong deployment - a client
+// scoped to an API group would probe {prefix}/apis, which does not exist, and
+// report the extension as missing on a deployment that serves it.
+func (c *Client) getRootJSON(ctx context.Context, path string, out interface{}, opts ...option.RequestOption) error {
+	root := c
+	if c.cfg.PathPrefix != "" {
+		root = c.scoped("")
+	}
+	return root.doJSON(ctx, http.MethodGet, path, nil, out, opts...)
+}
 
 // GetJSON performs a GET request and decodes the JSON response body.
 func (c *Client) GetJSON(ctx context.Context, path string, out interface{}, opts ...option.RequestOption) error {

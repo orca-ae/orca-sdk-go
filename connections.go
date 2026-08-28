@@ -15,7 +15,7 @@ type ConnectionsClient struct {
 // NewConnectionsClient creates a Connection registry client. Connections are a StreamNative Cloud
 // extension, served under CloudExtensionBasePath.
 func NewConnectionsClient(client *Client) *ConnectionsClient {
-	return &ConnectionsClient{client: client.WithPathPrefix(CloudExtensionBasePath)}
+	return &ConnectionsClient{client: client.scoped(CloudExtensionBasePath)}
 }
 
 // List returns all connections visible in the current workspace.

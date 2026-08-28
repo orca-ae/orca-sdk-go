@@ -55,4 +55,8 @@ type (
 
 	// DecodeError is a response that could not be turned into the expected type.
 	DecodeError = apierror.DecodeError
+
+	// ExtensionNotAvailableError is a call to an API extension the deployment
+	// does not serve, as opposed to a resource that happens to be missing.
+	ExtensionNotAvailableError = apierror.ExtensionNotAvailableError
 )
