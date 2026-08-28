@@ -58,6 +58,9 @@ type Client struct {
 	// sessions, their entries, and the audit trail of changes.
 	MemoryStores MemoryStoreService
 
+	// Vaults manages vaults and the credentials stored in them.
+	Vaults VaultService
+
 	// Cloud is the StreamNative Cloud extension surface. Every call through it
 	// is gated on the deployment advertising the cloud.sn.io group.
 	Cloud CloudService
@@ -72,6 +75,7 @@ func newClientFrom(cfg *requestconfig.RequestConfig, discovery *discoveryCache) 
 	client.Agents = newAgentService(client)
 	client.Sessions = newSessionService(client)
 	client.MemoryStores = newMemoryStoreService(client)
+	client.Vaults = newVaultService(client)
 	client.Cloud = newCloudService(client)
 	return client
 }

@@ -442,6 +442,13 @@ func (c ConnectionConfig) ToConnection() Connection
 func (c *ConnectionConfig) UnmarshalJSON(data []byte) error
 ```
 
+### CredentialAuthParam
+
+```go
+func (a CredentialAuthParam) IsZero() bool
+func (a CredentialAuthParam) MarshalJSON() ([]byte, error)
+```
+
 ### FlexibleTimestamp
 
 ```go
@@ -588,6 +595,35 @@ func (s SessionThreadService) Get(ctx context.Context, sessionID, threadID strin
 func (s SessionThreadService) List(ctx context.Context, sessionID string, params SessionThreadListParams, opts ...option.RequestOption) (*pagination.PageCursor[SessionThread], error)
 ```
 
+### VaultCredentialAuth
+
+```go
+func (a *VaultCredentialAuth) UnmarshalJSON(data []byte) error
+```
+
+### VaultCredentialService
+
+```go
+func (s VaultCredentialService) Archive(ctx context.Context, vaultID, credentialID string, opts ...option.RequestOption) (*VaultCredential, error)
+func (s VaultCredentialService) Create(ctx context.Context, vaultID string, params CredentialNewParams, opts ...option.RequestOption) (*VaultCredential, error)
+func (s VaultCredentialService) Delete(ctx context.Context, vaultID, credentialID string, opts ...option.RequestOption) (*VaultCredentialDeleted, error)
+func (s VaultCredentialService) Get(ctx context.Context, vaultID, credentialID string, opts ...option.RequestOption) (*VaultCredential, error)
+func (s VaultCredentialService) List(ctx context.Context, vaultID string, params CredentialListParams, opts ...option.RequestOption) (*pagination.PageCursor[VaultCredential], error)
+func (s VaultCredentialService) Update(ctx context.Context, vaultID, credentialID string, params CredentialUpdateParams, opts ...option.RequestOption) (*VaultCredential, error)
+func (s VaultCredentialService) Validate(ctx context.Context, vaultID, credentialID string, opts ...option.RequestOption) (*CredentialValidation, error)
+```
+
+### VaultService
+
+```go
+func (s VaultService) Archive(ctx context.Context, vaultID string, opts ...option.RequestOption) (*Vault, error)
+func (s VaultService) Create(ctx context.Context, params VaultNewParams, opts ...option.RequestOption) (*Vault, error)
+func (s VaultService) Delete(ctx context.Context, vaultID string, opts ...option.RequestOption) (*VaultDeleted, error)
+func (s VaultService) Get(ctx context.Context, vaultID string, opts ...option.RequestOption) (*Vault, error)
+func (s VaultService) List(ctx context.Context, params VaultListParams, opts ...option.RequestOption) (*pagination.PageCursor[Vault], error)
+func (s VaultService) Update(ctx context.Context, vaultID string, params VaultUpdateParams, opts ...option.RequestOption) (*Vault, error)
+```
+
 ## Package functions
 
 ```go
@@ -601,6 +637,8 @@ func RosterSelf() AgentRosterEntry
 func New(opts ...option.RequestOption) (*Client, error)
 func ConnectionConfigFromConnection(connection Connection) ConnectionConfig
 func ToConnectionList(configs []ConnectionConfig) ConnectionList
+func LimitedNetworking(hosts ...string) CredentialNetworking
+func UnrestrictedNetworking() CredentialNetworking
 func AgentRef(id string) SessionAgentParam
 func Text(text string) SessionEventContent
 func UserMessage(text string) SessionEventParam
@@ -664,6 +702,18 @@ func MemoryStoreResource(memoryStoreID string) SessionResourceParam
 - `ConsumerConfig`
 - `CoreProbeStatus`
 - `CreateConnectorRequest`
+- `CredentialAuthType`
+- `CredentialInjectionLocation`
+- `CredentialListParams`
+- `CredentialNetworking`
+- `CredentialNewParams`
+- `CredentialOAuthRefresh`
+- `CredentialTokenEndpointAuth`
+- `CredentialUpdateParams`
+- `CredentialValidation`
+- `CredentialValidationHTTPResponse`
+- `CredentialValidationMCPProbe`
+- `CredentialValidationRefresh`
 - `DecodeError`
 - `Error`
 - `ExtensionNotAvailableError`
@@ -767,5 +817,12 @@ func MemoryStoreResource(memoryStoreID string) SessionResourceParam
 - `UpdateOptionsImpl`
 - `UserAbortError`
 - `ValidationError`
+- `Vault`
+- `VaultCredential`
+- `VaultCredentialDeleted`
+- `VaultDeleted`
+- `VaultListParams`
+- `VaultNewParams`
+- `VaultUpdateParams`
 - `WindowConfig`
 - `WorkerStatus`
