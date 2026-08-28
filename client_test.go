@@ -3,6 +3,7 @@ package orca
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -108,8 +109,8 @@ func TestClientReturnsHTTPError(t *testing.T) {
 		t.Fatal("Delete() expected error, got nil")
 	}
 
-	httpErr, ok := err.(*HTTPError)
-	if !ok {
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) {
 		t.Fatalf("Delete() error type = %T, want *HTTPError", err)
 	}
 	if httpErr.StatusCode != http.StatusBadRequest {
@@ -156,8 +157,8 @@ func TestClientGetToWriterReturnsHTTPError(t *testing.T) {
 		t.Fatal("GetToWriter() expected error, got nil")
 	}
 
-	httpErr, ok := err.(*HTTPError)
-	if !ok {
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) {
 		t.Fatalf("GetToWriter() error type = %T, want *HTTPError", err)
 	}
 	if httpErr.StatusCode != http.StatusBadRequest {

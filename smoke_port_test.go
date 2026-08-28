@@ -7,8 +7,12 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/orca-ae/orca-sdk-go/internal/requestconfig"
+	"github.com/orca-ae/orca-sdk-go/option"
 )
 
 // Ported from orca-sdk-typescript tests/smoke.test.ts.
@@ -362,11 +366,11 @@ func TestSmokeDefaultHTTPClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient() error = %v", err)
 	}
-	if client.httpClient == nil {
+	if client.cfg.HTTPClient == nil {
 		t.Fatal("httpClient = nil, want a default client")
 	}
-	if client.httpClient.Timeout != defaultHTTPTimeout {
-		t.Errorf("default timeout = %v, want %v", client.httpClient.Timeout, defaultHTTPTimeout)
+	if client.cfg.HTTPClient.Timeout != defaultHTTPTimeout {
+		t.Errorf("default timeout = %v, want %v", client.cfg.HTTPClient.Timeout, defaultHTTPTimeout)
 	}
 }
 
@@ -517,14 +521,46 @@ func TestSmokeResponseBodyLimit(t *testing.T) {
 
 // TS: expect(VERSION).toBe('0.2.0').
 func TestSmokeVersionConstant(t *testing.T) {
-	t.Skip("not implemented: the package exports no VERSION/Version constant, so a caller " +
-		"cannot report the SDK version and no User-Agent carries it")
+	t.Parallel()
+
+	// The constant is exported for callers who put this client behind their own
+	// service and need it in their User-Agent, and for anyone quoting a version
+	// in a bug report. It also has to reach the wire, or a server log cannot
+	// tell which SDK version produced a request.
+	if Version == "" {
+		t.Fatal("Version = \"\", want a semantic version")
+	}
+	if !regexp.MustCompile(`^\d+\.\d+\.\d+`).MatchString(Version) {
+		t.Errorf("Version = %q, want a semantic version", Version)
+	}
+
+	client, transport := newRecordingClient(t, nil)
+	var out map[string]any
+	if err := client.GetJSON(context.Background(), "/v1/agents", &out); err != nil {
+		t.Fatalf("GetJSON() error = %v", err)
+	}
+	if got, want := transport.Only(t).Header.Get("X-Orca-Client"), "orca-sdk-go/"+Version; got != want {
+		t.Errorf("X-Orca-Client = %q, want %q", got, want)
+	}
 }
 
 // TS: expect(orca.maxRetries).toBe(2).
 func TestSmokeDefaultMaxRetries(t *testing.T) {
-	t.Skip("not implemented: there is no retry policy — Client issues exactly one request " +
-		"per call, so there is no maxRetries option, no backoff, and no idempotency handling")
+	t.Parallel()
+
+	// Retrying by default is the right behaviour for a network client, but only
+	// because the policy is narrow: see TestClientRetryBehaviour for which
+	// failures qualify.
+	client, err := New(option.WithBaseURL(testBaseURL), option.WithAPIKey("orca_test"))
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if got := client.cfg.MaxRetries; got != requestconfig.DefaultMaxRetries {
+		t.Errorf("default MaxRetries = %d, want %d", got, requestconfig.DefaultMaxRetries)
+	}
+	if requestconfig.DefaultMaxRetries != 2 {
+		t.Errorf("DefaultMaxRetries = %d, want 2", requestconfig.DefaultMaxRetries)
+	}
 }
 
 // TS: typed resources such as orca.triggers, orca.sessions.files,

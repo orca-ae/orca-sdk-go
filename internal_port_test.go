@@ -15,6 +15,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/orca-ae/orca-sdk-go/option"
 )
 
 // Ported from orca-sdk-typescript tests/internal/{headers,path,query,values,
@@ -222,16 +224,76 @@ func TestCredentialHeadersAreMutuallyExclusive(t *testing.T) {
 // TS: 'appends multiple values from a single tuple-array source' — buildHeaders
 // can produce "x-multi: one, two".
 func TestMultiValuedDefaultHeader(t *testing.T) {
-	t.Skip("not implemented: WithDefaultHeader uses http.Header.Set, so a default can only " +
-		"carry one value — applyDefaultHeaders would forward several, but no public API " +
-		"can construct a multi-valued default")
+	t.Parallel()
+
+	// Some headers are genuinely lists - Accept, Accept-Encoding, and any
+	// deployment-specific header that takes several values. Set would collapse
+	// them to the last one written, so a client that could only Set would make
+	// those headers unusable.
+	client, transport := newRecordingClientWith(t, nil,
+		option.WithHeader("X-Feature", "alpha"),
+		option.WithHeaderAdd("X-Feature", "beta"),
+	)
+
+	var out map[string]any
+	if err := client.GetJSON(context.Background(), "/v1/agents", &out); err != nil {
+		t.Fatalf("GetJSON() error = %v", err)
+	}
+
+	got := transport.Only(t).Header.Values("X-Feature")
+	want := []string{"alpha", "beta"}
+	if !slices.Equal(got, want) {
+		t.Errorf("X-Feature = %v, want %v", got, want)
+	}
 }
 
 // TS: 'null values clear a header and remember the deletion'.
 func TestDefaultHeaderDeletion(t *testing.T) {
-	t.Skip("no Go analogue: there is no null-header sentinel — Go's http.Header has no " +
-		"tri-state (set / unset / explicitly cleared), and WithDefaultHeader cannot remove " +
-		"a header the request layer sets")
+	t.Parallel()
+
+	// Overriding a client-wide header is not the same as removing it: there is
+	// no value that means "do not send this". Without a deletion option, one
+	// call that must go out without a header the client always sets has no way
+	// to do it except building a second client.
+	t.Run("a per-call deletion suppresses a client-wide header", func(t *testing.T) {
+		t.Parallel()
+
+		client, transport := newRecordingClientWith(t, nil,
+			option.WithHeader("X-Tenant-Id", "tenant-42"))
+
+		ctx := context.Background()
+		var out map[string]any
+		if err := client.GetJSON(ctx, "/v1/agents", &out, option.WithHeaderDel("X-Tenant-Id")); err != nil {
+			t.Fatalf("GetJSON() error = %v", err)
+		}
+		if got := transport.Only(t).Header.Get("X-Tenant-Id"); got != "" {
+			t.Errorf("X-Tenant-Id = %q, want it removed", got)
+		}
+	})
+
+	t.Run("the deletion does not outlive the call", func(t *testing.T) {
+		t.Parallel()
+
+		client, transport := newRecordingClientWith(t, nil,
+			option.WithHeader("X-Tenant-Id", "tenant-42"))
+
+		ctx := context.Background()
+		var out map[string]any
+		if err := client.GetJSON(ctx, "/v1/agents", &out, option.WithHeaderDel("X-Tenant-Id")); err != nil {
+			t.Fatalf("GetJSON() error = %v", err)
+		}
+		if err := client.GetJSON(ctx, "/v1/agents", &out); err != nil {
+			t.Fatalf("GetJSON() error = %v", err)
+		}
+
+		calls := transport.Calls()
+		if len(calls) != 2 {
+			t.Fatalf("captured %d requests, want 2", len(calls))
+		}
+		if got := calls[1].Header.Get("X-Tenant-Id"); got != "tenant-42" {
+			t.Errorf("second call X-Tenant-Id = %q, want the client default restored", got)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------

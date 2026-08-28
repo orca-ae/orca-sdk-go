@@ -1,4 +1,4 @@
-// Copyright (c) 2026 StreamNative, Inc.. All Rights Reserved.
+// Copyright (c) 2026 StreamNative, Inc. All Rights Reserved.
 
 package orca
 
@@ -6,376 +6,369 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
-	"net/textproto"
-	"net/url"
 	"os"
-	"reflect"
 	"strings"
-	"time"
+
+	"github.com/orca-ae/orca-sdk-go/internal/apierror"
+	"github.com/orca-ae/orca-sdk-go/internal/requestconfig"
+	"github.com/orca-ae/orca-sdk-go/option"
 )
 
 const (
-	// Function triggers may synchronously wait up to 60 seconds for an output
-	// message. Keep the default client deadline above that server-side contract.
-	defaultHTTPTimeout = 90 * time.Second
+	// defaultHTTPTimeout bounds one attempt. Function triggers may
+	// synchronously wait up to 60 seconds for an output message, so the client
+	// deadline sits above that server-side contract rather than cutting off a
+	// call the server is still allowed to be working on.
+	defaultHTTPTimeout = requestconfig.DefaultTimeout
 
-	defaultMultipartFieldName    = "data"
-	defaultMultipartFileName     = "upload.bin"
 	defaultJSONResponseBodyLimit = 10 << 20
 	defaultMultipartBodyLimit    = 10 << 20
 )
 
-// HTTPError represents a non-successful registry response.
-type HTTPError struct {
-	Method     string
-	URL        string
-	StatusCode int
-	Body       string
-}
+// Environment variables consulted when the corresponding option is not passed.
+// They exist so a program can be pointed at a different deployment without a
+// recompile, which is what makes the same binary usable across environments.
+const (
+	envBaseURL     = "ORCA_BASE_URL"
+	envAPIKey      = "ORCA_API_KEY"
+	envAccessToken = "ORCA_ACCESS_TOKEN"
+)
 
-func (e *HTTPError) Error() string {
-	if e.Body == "" {
-		return fmt.Sprintf("%s %s returned status %d", e.Method, e.URL, e.StatusCode)
-	}
-
-	return fmt.Sprintf("%s %s returned status %d: %s", e.Method, e.URL, e.StatusCode, e.Body)
-}
-
-// Client is the base registry HTTP client.
+// Client is the registry HTTP client.
 type Client struct {
-	baseURL        *url.URL
-	httpClient     *http.Client
-	token          string
-	defaultHeaders http.Header
-	pathPrefix     string
+	cfg *requestconfig.RequestConfig
 }
 
-// MultipartFile represents one file part in a multipart registry request.
-type MultipartFile struct {
-	FieldName   string
-	FileName    string
-	ContentType string
-	Content     []byte
-}
-
-// MultipartRequest represents a registry multipart/form-data request.
-type MultipartRequest struct {
-	Accept        string
-	File          *MultipartFile
-	Files         []*MultipartFile
-	URL           string
-	Fields        map[string]string
-	JSONFields    map[string]interface{}
-	ConfigField   string
-	Config        interface{}
-	UpdateOptions interface{}
-}
-
-// legacyBaseURLSuffixes are base-URL path suffixes that used to be required and are now stripped
-// with a deprecation warning. Order matters: /api/v1 and /v1/registry must be checked before the
-// bare /v1, because both of them also end in "/v1" — checking the longer, more specific suffix
-// first is what makes the whole suffix get stripped instead of just its last segment. Leaving
-// ".../api" behind (by stripping only the trailing "/v1" of ".../api/v1") would produce a base
-// where core calls still work via the /api/v1 alias but extension calls under /apis/... 404 on an
-// undocumented path - a partial failure that is far more expensive to debug than a clean strip.
-var legacyBaseURLSuffixes = []string{"/api/v1", "/v1/registry", "/v1"}
-
-// stripLegacyBaseURLSuffix removes a trailing legacy suffix from a base URL path, if present. The
-// match is anchored to the end of the string (via strings.HasSuffix), so a path like
-// "/v1/registry-proxy" is left untouched: it does not end in exactly "/v1/registry" or "/v1".
-func stripLegacyBaseURLSuffix(path string) (stripped string, matchedSuffix string) {
-	trimmed := strings.TrimRight(path, "/")
-	for _, suffix := range legacyBaseURLSuffixes {
-		if strings.HasSuffix(trimmed, suffix) {
-			return strings.TrimSuffix(trimmed, suffix), suffix
-		}
+// New returns a client configured by opts.
+//
+// The base URL is the deployment host root - no /v1, /v1/registry, or /api/v1
+// suffix, since request paths carry their own prefix. A legacy suffix is
+// stripped with a deprecation notice on the warning writer.
+//
+// When no base URL or credential is passed, ORCA_BASE_URL and then
+// ORCA_API_KEY or ORCA_ACCESS_TOKEN are consulted. An explicit option always
+// wins over the environment.
+//
+//	client, err := orca.New(
+//		option.WithBaseURL("https://orca.example.com"),
+//		option.WithAPIKey(os.Getenv("ORCA_API_KEY")),
+//	)
+func New(opts ...option.RequestOption) (*Client, error) {
+	cfg, err := requestconfig.New(append(environmentOptions(), opts...)...)
+	if err != nil {
+		return nil, err
 	}
-	return path, ""
+	if cfg.BaseURL == nil {
+		return nil, apierror.Validationf("registry base URL is required")
+	}
+	return &Client{cfg: cfg}, nil
 }
 
-// warnLegacyBaseURL writes a deprecation warning to the caller's diagnostic stream - never
-// stdout, which this CLI treats as parseable output - when a base URL needed the legacy-suffix
-// shim above.
-func warnLegacyBaseURL(writer io.Writer, originalBaseURL, matchedSuffix, strippedBaseURL string) {
-	fmt.Fprintf(writer,
-		"warning: registry base URL %q ends with %q, which is no longer part of the base URL — "+
-			"every deployment now serves core at the host root (for example, GET {base}/v1/agents). "+
-			"Using %q instead. Update --registry-url / ORCA_REGISTRY_URL to the host root; this "+
-			"compatibility shim may be removed in a future version.\n",
-		originalBaseURL, matchedSuffix, strippedBaseURL)
+// environmentOptions returns the options implied by the environment. They are
+// applied before the caller's, so anything passed explicitly overrides them.
+func environmentOptions() []option.RequestOption {
+	var opts []option.RequestOption
+	if value := strings.TrimSpace(os.Getenv(envBaseURL)); value != "" {
+		opts = append(opts, option.WithBaseURL(value))
+	}
+	// The server reads x-api-key first and treats it as authoritative whenever
+	// present, so an API key in the environment wins over an access token
+	// exactly as it would on the wire.
+	if value := strings.TrimSpace(os.Getenv(envAPIKey)); value != "" {
+		opts = append(opts, option.WithAPIKey(value))
+	} else if value := strings.TrimSpace(os.Getenv(envAccessToken)); value != "" {
+		opts = append(opts, option.WithAuthToken(value))
+	}
+	return opts
 }
 
-// NewClient creates a registry client using the provided base URL and bearer token. The base URL
-// is the deployment host root: every request path supplied to the client's methods must carry its
-// own full prefix (v1/... for core, apis/cloud.sn.io/v1/... for StreamNative Cloud extensions). A
-// base URL ending in the legacy /api/v1, /v1/registry, or /v1 suffix is accepted for backward
-// compatibility - it is stripped, and a deprecation warning is printed to stderr.
+// NewClient creates a registry client using the provided base URL and bearer
+// token.
+//
+// Deprecated: use [New] with [option.WithBaseURL] and [option.WithAuthToken],
+// which also accepts per-request options and a rotating credential.
 func NewClient(baseURL, token string, httpClient *http.Client) (*Client, error) {
 	return NewClientWithWarningWriter(baseURL, token, httpClient, os.Stderr)
 }
 
-// NewUnauthenticatedClient creates a registry client for endpoints whose OpenAPI security is
-// explicitly empty, such as /healthz and /readyz.
+// NewUnauthenticatedClient creates a registry client for endpoints whose
+// OpenAPI security is explicitly empty, such as /healthz and /readyz.
+//
+// Deprecated: use [New] with [option.WithoutAuthentication].
 func NewUnauthenticatedClient(baseURL string, httpClient *http.Client) (*Client, error) {
 	return NewUnauthenticatedClientWithWarningWriter(baseURL, httpClient, os.Stderr)
 }
 
-// NewClientWithWarningWriter creates a registry client and writes legacy base-URL diagnostics to
-// warningWriter. It is intended for command hosts that provide their own stderr stream.
+// NewClientWithWarningWriter creates a registry client and writes legacy
+// base-URL diagnostics to warningWriter.
+//
+// Deprecated: use [New] with [option.WithWarningWriter].
 func NewClientWithWarningWriter(baseURL, token string, httpClient *http.Client, warningWriter io.Writer) (*Client, error) {
 	if strings.TrimSpace(token) == "" {
-		return nil, fmt.Errorf("registry access token is required")
+		return nil, apierror.Validationf("registry access token is required")
 	}
-	if warningWriter == nil {
-		warningWriter = os.Stderr
-	}
-	return newClient(baseURL, token, httpClient, warningWriter)
+	return newLegacyClient(baseURL, httpClient, warningWriter, option.WithAuthToken(token))
 }
 
-// NewAPIKeyClient creates a registry client that authenticates with a Managed Agents workspace API key.
+// NewAPIKeyClient creates a registry client that authenticates with a Managed
+// Agents workspace API key.
+//
+// Deprecated: use [New] with [option.WithAPIKey].
 func NewAPIKeyClient(baseURL, apiKey string, httpClient *http.Client) (*Client, error) {
 	return NewAPIKeyClientWithWarningWriter(baseURL, apiKey, httpClient, os.Stderr)
 }
 
-// NewAPIKeyClientWithWarningWriter creates an API-key client and writes legacy base-URL diagnostics
-// to warningWriter.
+// NewAPIKeyClientWithWarningWriter creates an API-key client and writes legacy
+// base-URL diagnostics to warningWriter.
+//
+// Deprecated: use [New] with [option.WithAPIKey] and [option.WithWarningWriter].
 func NewAPIKeyClientWithWarningWriter(baseURL, apiKey string, httpClient *http.Client, warningWriter io.Writer) (*Client, error) {
 	if strings.TrimSpace(apiKey) == "" {
-		return nil, fmt.Errorf("registry API key is required")
+		return nil, apierror.Validationf("registry API key is required")
+	}
+	return newLegacyClient(baseURL, httpClient, warningWriter, option.WithAPIKey(apiKey))
+}
+
+// NewUnauthenticatedClientWithWarningWriter creates an unauthenticated registry
+// client and writes legacy base-URL diagnostics to warningWriter.
+//
+// Deprecated: use [New] with [option.WithoutAuthentication] and
+// [option.WithWarningWriter].
+func NewUnauthenticatedClientWithWarningWriter(baseURL string, httpClient *http.Client, warningWriter io.Writer) (*Client, error) {
+	return newLegacyClient(baseURL, httpClient, warningWriter, option.WithoutAuthentication())
+}
+
+// newLegacyClient backs the pre-option constructors. They are kept because
+// callers depend on them; behind the façade they build the same config New does.
+//
+// Retries are off: these constructors predate a retry policy, and silently
+// beginning to repeat a caller's mutations would change what their existing
+// code does to the server.
+func newLegacyClient(
+	baseURL string,
+	httpClient *http.Client,
+	warningWriter io.Writer,
+	credential option.RequestOption,
+) (*Client, error) {
+	if strings.TrimSpace(baseURL) == "" {
+		return nil, apierror.Validationf("registry base URL is required")
 	}
 	if warningWriter == nil {
 		warningWriter = os.Stderr
 	}
-	client, err := newClient(baseURL, "", httpClient, warningWriter)
+
+	opts := []option.RequestOption{
+		option.WithWarningWriter(warningWriter),
+		option.WithBaseURL(baseURL),
+		credential,
+		option.WithMaxRetries(0),
+	}
+	if httpClient != nil {
+		opts = append(opts, option.WithHTTPClient(httpClient))
+	}
+
+	cfg, err := requestconfig.New(opts...)
 	if err != nil {
 		return nil, err
 	}
-	return client.WithDefaultHeader("x-api-key", apiKey), nil
+	return &Client{cfg: cfg}, nil
 }
 
-// NewUnauthenticatedClientWithWarningWriter creates an unauthenticated registry client and writes
-// legacy base-URL diagnostics to warningWriter.
-func NewUnauthenticatedClientWithWarningWriter(baseURL string, httpClient *http.Client, warningWriter io.Writer) (*Client, error) {
-	if warningWriter == nil {
-		warningWriter = os.Stderr
-	}
-	return newClient(baseURL, "", httpClient, warningWriter)
+// stripLegacyBaseURLSuffix removes a trailing legacy suffix from a base-URL
+// path, if present.
+func stripLegacyBaseURLSuffix(path string) (stripped string, matchedSuffix string) {
+	return requestconfig.StripLegacyBaseURLSuffix(path)
 }
 
-func newClient(baseURL, token string, httpClient *http.Client, warningWriter io.Writer) (*Client, error) {
-	if strings.TrimSpace(baseURL) == "" {
-		return nil, fmt.Errorf("registry base URL is required")
-	}
-
-	parsedBaseURL, err := url.Parse(baseURL)
+// With returns a clone of the client with opts applied, leaving the receiver
+// unchanged.
+func (c *Client) With(opts ...option.RequestOption) (*Client, error) {
+	cfg, err := c.cfg.With(opts...)
 	if err != nil {
-		return nil, fmt.Errorf("invalid registry base URL %q: %w", baseURL, err)
+		return nil, err
 	}
-
-	if stripped, matchedSuffix := stripLegacyBaseURLSuffix(parsedBaseURL.Path); matchedSuffix != "" {
-		parsedBaseURL.Path = stripped
-		warnLegacyBaseURL(warningWriter, baseURL, matchedSuffix, parsedBaseURL.String())
-	}
-	if !strings.HasSuffix(parsedBaseURL.Path, "/") {
-		parsedBaseURL.Path += "/"
-	}
-
-	if httpClient == nil {
-		httpClient = &http.Client{Timeout: defaultHTTPTimeout}
-	}
-
-	return &Client{
-		baseURL:    parsedBaseURL,
-		httpClient: httpClient,
-		token:      token,
-	}, nil
+	return &Client{cfg: cfg}, nil
 }
 
 // WithDefaultHeader returns a client clone that adds a default header unless
 // the request already sets that header.
 func (c *Client) WithDefaultHeader(name, value string) *Client {
-	clone := *c
-	clone.defaultHeaders = c.defaultHeaders.Clone()
-	if clone.defaultHeaders == nil {
-		clone.defaultHeaders = http.Header{}
-	}
-	clone.defaultHeaders.Set(name, value)
-	return &clone
+	cfg := c.cfg.Clone()
+	cfg.Header.Set(name, value)
+	return &Client{cfg: cfg}
 }
 
-// WithPathPrefix returns a client clone that resolves every path relative to prefix instead of the
-// base URL directly. Used to scope a client to one API group (for example
-// "apis/cloud.sn.io/v1") so its resource methods keep passing short, resource-relative paths
-// ("/connections") exactly as they did before the base URL became the host root.
+// WithPathPrefix returns a client clone that resolves every path relative to
+// prefix instead of the base URL directly.
+//
+// Used to scope a client to one API group (for example "apis/cloud.sn.io/v1")
+// so its resource methods keep passing short, resource-relative paths.
 func (c *Client) WithPathPrefix(prefix string) *Client {
-	clone := *c
+	cfg := c.cfg.Clone()
 	trimmed := strings.Trim(prefix, "/")
 	if trimmed != "" {
 		trimmed += "/"
 	}
-	clone.pathPrefix = trimmed
-	return &clone
+	cfg.PathPrefix = trimmed
+	return &Client{cfg: cfg}
 }
 
+// Options returns the client's request configuration. It is unexported state
+// made reachable for resources in this package; callers configure a client
+// through [option] instead.
+func (c *Client) config() *requestconfig.RequestConfig { return c.cfg }
+
 // GetJSON performs a GET request and decodes the JSON response body.
-func (c *Client) GetJSON(ctx context.Context, path string, out interface{}) error {
-	return c.doJSON(ctx, http.MethodGet, path, nil, out)
+func (c *Client) GetJSON(ctx context.Context, path string, out interface{}, opts ...option.RequestOption) error {
+	return c.doJSON(ctx, http.MethodGet, path, nil, out, opts...)
+}
+
+// PostJSON performs a POST request with a JSON request body.
+func (c *Client) PostJSON(ctx context.Context, path string, body interface{}, out interface{}, opts ...option.RequestOption) error {
+	return c.doJSON(ctx, http.MethodPost, path, body, out, opts...)
+}
+
+// PutJSON performs a PUT request with a JSON request body.
+func (c *Client) PutJSON(ctx context.Context, path string, body interface{}, out interface{}, opts ...option.RequestOption) error {
+	return c.doJSON(ctx, http.MethodPut, path, body, out, opts...)
+}
+
+// PatchJSON performs a PATCH request with a JSON request body.
+func (c *Client) PatchJSON(ctx context.Context, path string, body interface{}, out interface{}, opts ...option.RequestOption) error {
+	return c.doJSON(ctx, http.MethodPatch, path, body, out, opts...)
+}
+
+// Delete performs a DELETE request.
+func (c *Client) Delete(ctx context.Context, path string, opts ...option.RequestOption) error {
+	return c.doJSON(ctx, http.MethodDelete, path, nil, nil, opts...)
 }
 
 // GetToWriter performs a GET request and streams the raw response body to writer.
-func (c *Client) GetToWriter(ctx context.Context, path string, writer io.Writer) error {
+func (c *Client) GetToWriter(ctx context.Context, path string, writer io.Writer, opts ...option.RequestOption) error {
 	if writer == nil {
-		return fmt.Errorf("response writer is required")
+		return apierror.Validationf("response writer is required")
 	}
 
 	return c.GetStream(ctx, path, "*/*", func(reader io.Reader) error {
 		if _, err := io.Copy(writer, reader); err != nil {
-			return fmt.Errorf("failed to stream response: %w", err)
+			return apierror.Errorf("failed to stream response: %w", err)
 		}
 		return nil
-	})
+	}, opts...)
 }
 
 // GetStream performs a GET request and lets handle consume the raw response body.
-func (c *Client) GetStream(ctx context.Context, path string, accept string, handle func(io.Reader) error) error {
+//
+// The body is handed over unread, so a long-lived stream - Server-Sent Events,
+// a large download - is processed as it arrives instead of being buffered.
+func (c *Client) GetStream(
+	ctx context.Context,
+	path string,
+	accept string,
+	handle func(io.Reader) error,
+	opts ...option.RequestOption,
+) error {
 	if handle == nil {
-		return fmt.Errorf("response handler is required")
+		return apierror.Validationf("response handler is required")
 	}
 
-	endpoint, err := c.resolveURL(path)
+	cfg, err := c.cfg.With(opts...)
+	if err != nil {
+		return err
+	}
+	endpoint, err := cfg.ResolveURL(path)
 	if err != nil {
 		return err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create %s request: %w", http.MethodGet, err)
-	}
-
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
-	}
 	if strings.TrimSpace(accept) == "" {
 		accept = "*/*"
 	}
-	req.Header.Set("Accept", accept)
-	c.applyDefaultHeaders(req)
+	header := http.Header{"Accept": []string{accept}}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := cfg.Do(ctx, http.MethodGet, endpoint, nil, header)
 	if err != nil {
-		return fmt.Errorf("failed to execute %s %s: %w", http.MethodGet, endpoint, err)
+		return err
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+	if !isSuccess(resp.StatusCode) {
 		responseBytes, readErr := readResponseBodyLimited(resp.Body, defaultJSONResponseBodyLimit)
 		if readErr != nil {
-			return fmt.Errorf("failed to read %s %s response: %w", http.MethodGet, endpoint, readErr)
+			return apierror.Errorf("failed to read %s %s response: %w", http.MethodGet, endpoint, readErr)
 		}
-		return &HTTPError{
-			Method:     http.MethodGet,
-			URL:        endpoint,
-			StatusCode: resp.StatusCode,
-			Body:       strings.TrimSpace(string(responseBytes)),
-		}
+		return apierror.FromResponse(http.MethodGet, endpoint, resp.StatusCode, string(responseBytes), resp.Header)
 	}
 
 	if err := handle(resp.Body); err != nil {
-		return fmt.Errorf("failed to stream %s %s response: %w", http.MethodGet, endpoint, err)
+		return apierror.Errorf("failed to stream %s %s response: %w", http.MethodGet, endpoint, err)
 	}
 
 	return nil
 }
 
-// PostJSON performs a POST request with a JSON request body.
-func (c *Client) PostJSON(ctx context.Context, path string, body interface{}, out interface{}) error {
-	return c.doJSON(ctx, http.MethodPost, path, body, out)
-}
-
-// PutJSON performs a PUT request with a JSON request body.
-func (c *Client) PutJSON(ctx context.Context, path string, body interface{}, out interface{}) error {
-	return c.doJSON(ctx, http.MethodPut, path, body, out)
-}
-
-// PatchJSON performs a PATCH request with a JSON request body.
-func (c *Client) PatchJSON(ctx context.Context, path string, body interface{}, out interface{}) error {
-	return c.doJSON(ctx, http.MethodPatch, path, body, out)
-}
-
-// Delete performs a DELETE request.
-func (c *Client) Delete(ctx context.Context, path string) error {
-	return c.doJSON(ctx, http.MethodDelete, path, nil, nil)
-}
-
 // PostMultipart performs a POST request with a multipart/form-data request body.
-func (c *Client) PostMultipart(ctx context.Context, path string, body MultipartRequest) error {
-	_, err := c.doMultipart(ctx, http.MethodPost, path, body, false)
+func (c *Client) PostMultipart(ctx context.Context, path string, body MultipartRequest, opts ...option.RequestOption) error {
+	_, err := c.doMultipart(ctx, http.MethodPost, path, body, false, opts...)
 	return err
 }
 
 // PutMultipart performs a PUT request with a multipart/form-data request body.
-func (c *Client) PutMultipart(ctx context.Context, path string, body MultipartRequest) error {
-	_, err := c.doMultipart(ctx, http.MethodPut, path, body, false)
+func (c *Client) PutMultipart(ctx context.Context, path string, body MultipartRequest, opts ...option.RequestOption) error {
+	_, err := c.doMultipart(ctx, http.MethodPut, path, body, false, opts...)
 	return err
 }
 
 // PostMultipartWithResponse performs a POST request with a multipart/form-data
 // request body and returns the raw response payload.
-func (c *Client) PostMultipartWithResponse(ctx context.Context, path string, body MultipartRequest) ([]byte, error) {
-	return c.doMultipart(ctx, http.MethodPost, path, body, true)
+func (c *Client) PostMultipartWithResponse(ctx context.Context, path string, body MultipartRequest, opts ...option.RequestOption) ([]byte, error) {
+	return c.doMultipart(ctx, http.MethodPost, path, body, true, opts...)
 }
 
-func (c *Client) doJSON(ctx context.Context, method, path string, requestBody interface{}, responseBody interface{}) error {
-	endpoint, err := c.resolveURL(path)
+func (c *Client) doJSON(
+	ctx context.Context,
+	method, path string,
+	requestBody interface{},
+	responseBody interface{},
+	opts ...option.RequestOption,
+) error {
+	cfg, err := c.cfg.With(opts...)
+	if err != nil {
+		return err
+	}
+	endpoint, err := cfg.ResolveURL(path)
 	if err != nil {
 		return err
 	}
 
-	var bodyReader io.Reader
+	header := http.Header{"Accept": []string{"application/json"}}
+
+	var newBody func() (io.Reader, error)
 	if requestBody != nil {
 		payload, err := json.Marshal(requestBody)
 		if err != nil {
-			return fmt.Errorf("failed to marshal %s payload: %w", method, err)
+			return apierror.Errorf("failed to marshal %s payload: %w", method, err)
 		}
-		bodyReader = bytes.NewReader(payload)
+		header.Set("Content-Type", "application/json")
+		// Rebuilt per attempt: a reader is consumed by the first one.
+		newBody = func() (io.Reader, error) { return bytes.NewReader(payload), nil }
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, endpoint, bodyReader)
+	resp, err := cfg.Do(ctx, method, endpoint, newBody, header)
 	if err != nil {
-		return fmt.Errorf("failed to create %s request: %w", method, err)
-	}
-
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
-	}
-	req.Header.Set("Accept", "application/json")
-	if requestBody != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-	c.applyDefaultHeaders(req)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("failed to execute %s %s: %w", method, endpoint, err)
+		return err
 	}
 	defer resp.Body.Close()
 
 	responseBytes, err := readResponseBodyLimited(resp.Body, defaultJSONResponseBodyLimit)
 	if err != nil {
-		return fmt.Errorf("failed to read %s %s response: %w", method, endpoint, err)
+		return apierror.Errorf("failed to read %s %s response: %w", method, endpoint, err)
 	}
 
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return &HTTPError{
-			Method:     method,
-			URL:        endpoint,
-			StatusCode: resp.StatusCode,
-			Body:       strings.TrimSpace(string(responseBytes)),
-		}
+	if !isSuccess(resp.StatusCode) {
+		return apierror.FromResponse(method, endpoint, resp.StatusCode, string(responseBytes), resp.Header)
 	}
 
 	if responseBody == nil || len(bytes.TrimSpace(responseBytes)) == 0 {
@@ -383,239 +376,86 @@ func (c *Client) doJSON(ctx context.Context, method, path string, requestBody in
 	}
 
 	if err := json.Unmarshal(responseBytes, responseBody); err != nil {
-		return fmt.Errorf("failed to decode %s %s response: %w", method, endpoint, err)
+		return &apierror.DecodeError{Method: method, URL: endpoint, Err: err}
 	}
 
 	return nil
 }
 
-func (c *Client) doMultipart(ctx context.Context, method, path string, requestBody MultipartRequest, allowEmptyConfig bool) ([]byte, error) {
-	endpoint, err := c.resolveURL(path)
+func (c *Client) doMultipart(
+	ctx context.Context,
+	method, path string,
+	requestBody MultipartRequest,
+	allowEmptyConfig bool,
+	opts ...option.RequestOption,
+) ([]byte, error) {
+	cfg, err := c.cfg.With(opts...)
+	if err != nil {
+		return nil, err
+	}
+	endpoint, err := cfg.ResolveURL(path)
 	if err != nil {
 		return nil, err
 	}
 
-	hasConfig := strings.TrimSpace(requestBody.ConfigField) != "" || requestBody.Config != nil
-	if !allowEmptyConfig && !hasConfig {
-		return nil, fmt.Errorf("multipart config field is required")
-	}
-	if hasConfig {
-		if strings.TrimSpace(requestBody.ConfigField) == "" {
-			return nil, fmt.Errorf("multipart config field is required")
-		}
-		if requestBody.Config == nil {
-			return nil, fmt.Errorf("multipart config payload is required")
-		}
-	}
-
-	bodyBuf := bytes.NewBuffer(nil)
-	writer := multipart.NewWriter(bodyBuf)
-
-	files := make([]*MultipartFile, 0, 1+len(requestBody.Files))
-	if requestBody.File != nil {
-		files = append(files, requestBody.File)
-	}
-	files = append(files, requestBody.Files...)
-	for _, file := range files {
-		if file == nil {
-			continue
-		}
-		if err := writeMultipartFileField(writer, file); err != nil {
-			return nil, err
-		}
-	}
-
-	if strings.TrimSpace(requestBody.URL) != "" {
-		if err := writer.WriteField("url", requestBody.URL); err != nil {
-			return nil, fmt.Errorf("failed to write multipart url field: %w", err)
-		}
-	}
-
-	if hasConfig {
-		if err := writeMultipartJSONField(writer, requestBody.ConfigField, requestBody.Config); err != nil {
-			return nil, err
-		}
-	}
-
-	for fieldName, fieldValue := range requestBody.Fields {
-		if strings.TrimSpace(fieldValue) == "" {
-			continue
-		}
-		if err := writer.WriteField(fieldName, fieldValue); err != nil {
-			return nil, fmt.Errorf("failed to write multipart %s field: %w", fieldName, err)
-		}
-	}
-
-	for fieldName, fieldValue := range requestBody.JSONFields {
-		if fieldValue == nil {
-			continue
-		}
-		if err := writeMultipartJSONField(writer, fieldName, fieldValue); err != nil {
-			return nil, err
-		}
-	}
-
-	if !isNilMultipartValue(requestBody.UpdateOptions) {
-		if err := writeMultipartJSONField(writer, "updateOptions", requestBody.UpdateOptions); err != nil {
-			return nil, err
-		}
-	}
-
-	if err := writer.Close(); err != nil {
-		return nil, fmt.Errorf("failed to finalize multipart request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, endpoint, bodyBuf)
+	contentType, payload, err := buildMultipartBody(requestBody, allowEmptyConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create %s request: %w", method, err)
+		return nil, err
 	}
 
-	if c.token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.token)
-	}
 	accept := strings.TrimSpace(requestBody.Accept)
 	if accept == "" {
 		accept = "application/json"
 	}
-	req.Header.Set("Accept", accept)
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-	c.applyDefaultHeaders(req)
+	header := http.Header{
+		"Accept":       []string{accept},
+		"Content-Type": []string{contentType},
+	}
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := cfg.Do(ctx, method, endpoint, func() (io.Reader, error) {
+		return bytes.NewReader(payload), nil
+	}, header)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute %s %s: %w", method, endpoint, err)
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	responseBytes, err := readResponseBodyLimited(resp.Body, defaultMultipartBodyLimit)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read %s %s response: %w", method, endpoint, err)
+		return nil, apierror.Errorf("failed to read %s %s response: %w", method, endpoint, err)
 	}
 
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, &HTTPError{
-			Method:     method,
-			URL:        endpoint,
-			StatusCode: resp.StatusCode,
-			Body:       strings.TrimSpace(string(responseBytes)),
-		}
+	if !isSuccess(resp.StatusCode) {
+		return nil, apierror.FromResponse(method, endpoint, resp.StatusCode, string(responseBytes), resp.Header)
 	}
 
 	return responseBytes, nil
 }
 
-func (c *Client) applyDefaultHeaders(req *http.Request) {
-	for name, values := range c.defaultHeaders {
-		if len(req.Header[http.CanonicalHeaderKey(name)]) > 0 {
-			continue
-		}
-		for _, value := range values {
-			req.Header.Add(name, value)
-		}
-	}
+// isSuccess reports whether a status is a 2xx.
+//
+// Only 2xx counts: a 3xx the transport did not follow has no body worth
+// decoding, so it surfaces as an error rather than being handed back as if the
+// server had answered.
+func isSuccess(status int) bool {
+	return status >= http.StatusOK && status < http.StatusMultipleChoices
 }
 
-func isNilMultipartValue(value interface{}) bool {
-	if value == nil {
-		return true
-	}
-
-	rv := reflect.ValueOf(value)
-	switch rv.Kind() {
-	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
-		return rv.IsNil()
-	default:
-		return false
-	}
-}
-
+// readResponseBodyLimited reads at most limit bytes, failing rather than
+// buffering an unbounded response into memory.
 func readResponseBodyLimited(body io.Reader, limit int64) ([]byte, error) {
 	responseBytes, err := io.ReadAll(io.LimitReader(body, limit+1))
 	if err != nil {
 		return nil, err
 	}
 	if int64(len(responseBytes)) > limit {
-		return nil, fmt.Errorf("response body exceeds limit of %d bytes", limit)
+		return nil, apierror.Errorf("response body exceeds limit of %d bytes", limit)
 	}
 
 	return responseBytes, nil
 }
 
-func writeMultipartFileField(writer *multipart.Writer, file *MultipartFile) error {
-	fieldName := file.FieldName
-	if strings.TrimSpace(fieldName) == "" {
-		fieldName = defaultMultipartFieldName
-	}
-	fileName := file.FileName
-	if strings.TrimSpace(fileName) == "" {
-		fileName = defaultMultipartFileName
-	}
-
-	if strings.TrimSpace(file.ContentType) == "" {
-		part, err := writer.CreateFormFile(fieldName, fileName)
-		if err != nil {
-			return fmt.Errorf("failed to create multipart file part: %w", err)
-		}
-		if _, err := part.Write(file.Content); err != nil {
-			return fmt.Errorf("failed to write multipart file part: %w", err)
-		}
-		return nil
-	}
-
-	header := make(textproto.MIMEHeader)
-	header.Set("Content-Disposition",
-		fmt.Sprintf(`form-data; name="%s"; filename="%s"`,
-			sanitizeHeaderValue(fieldName), sanitizeHeaderValue(fileName)))
-	header.Set("Content-Type", file.ContentType)
-	part, err := writer.CreatePart(header)
-	if err != nil {
-		return fmt.Errorf("failed to create multipart file part: %w", err)
-	}
-	if _, err := part.Write(file.Content); err != nil {
-		return fmt.Errorf("failed to write multipart file part: %w", err)
-	}
-	return nil
-}
-
-// sanitizeHeaderValue removes characters that could cause header injection
-// (double quotes, backslashes, carriage returns, newlines).
-func sanitizeHeaderValue(s string) string {
-	r := strings.NewReplacer(`"`, "", `\`, "", "\r", "", "\n", "")
-	return r.Replace(s)
-}
-
-func writeMultipartJSONField(writer *multipart.Writer, fieldName string, value interface{}) error {
-	header := make(textproto.MIMEHeader)
-	header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="%s"`, fieldName))
-	header.Set("Content-Type", "application/json")
-
-	part, err := writer.CreatePart(header)
-	if err != nil {
-		return fmt.Errorf("failed to create multipart %s field: %w", fieldName, err)
-	}
-
-	payload, err := json.Marshal(value)
-	if err != nil {
-		return fmt.Errorf("failed to marshal multipart %s payload: %w", fieldName, err)
-	}
-
-	if _, err := part.Write(payload); err != nil {
-		return fmt.Errorf("failed to write multipart %s payload: %w", fieldName, err)
-	}
-
-	return nil
-}
-
+// resolveURL turns a resource-relative path into an absolute URL.
 func (c *Client) resolveURL(path string) (string, error) {
-	if strings.TrimSpace(path) == "" {
-		return "", fmt.Errorf("registry path is required")
-	}
-
-	relativePath := c.pathPrefix + strings.TrimPrefix(path, "/")
-	relativeURL, err := url.Parse(relativePath)
-	if err != nil {
-		return "", fmt.Errorf("invalid registry path %q: %w", path, err)
-	}
-
-	return c.baseURL.ResolveReference(relativeURL).String(), nil
+	return c.cfg.ResolveURL(path)
 }

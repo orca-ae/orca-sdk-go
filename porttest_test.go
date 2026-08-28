@@ -4,12 +4,18 @@ package orca
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
+	"time"
+
+	"github.com/orca-ae/orca-sdk-go/internal/requestconfig"
+	"github.com/orca-ae/orca-sdk-go/option"
 )
 
 // This file provides the shared harness for the test suite ported from
@@ -162,4 +168,71 @@ func newRecordingAPIKeyClient(tb testing.TB, respond responder) (*Client, *recor
 		tb.Fatalf("NewAPIKeyClientWithWarningWriter() error = %v", err)
 	}
 	return client, transport
+}
+
+// newRecordingClientWith is newRecordingClient with extra options applied.
+//
+// Note that the recording clients above deliberately have retries disabled, via
+// the legacy constructors they are built with. That is what lets the assertions
+// throughout this suite treat "requests captured" as "calls the SDK made" - a
+// retrying client would make a 500 look like three requests and quietly break
+// every call-count assertion. Retry behaviour has its own harness below.
+func newRecordingClientWith(tb testing.TB, respond responder, opts ...option.RequestOption) (*Client, *recordingTransport) {
+	tb.Helper()
+	transport := &recordingTransport{respond: respond}
+	base := []option.RequestOption{
+		option.WithBaseURL(testBaseURL),
+		option.WithAuthToken("test-key"),
+		option.WithHTTPClient(&http.Client{Transport: transport}),
+		option.WithWarningWriter(io.Discard),
+		option.WithMaxRetries(0),
+	}
+	client, err := New(append(base, opts...)...)
+	if err != nil {
+		tb.Fatalf("New() error = %v", err)
+	}
+	return client, transport
+}
+
+// newRetryingClient returns a client that retries, with the backoff replaced by
+// a recorder. Tests can then assert the delay the policy chose without paying
+// it: a suite that actually slept through exponential backoff would take
+// minutes, and would be the first thing anyone deleted.
+func newRetryingClient(
+	tb testing.TB,
+	maxRetries int,
+	respond responder,
+) (*Client, *recordingTransport, *[]time.Duration) {
+	tb.Helper()
+	transport := &recordingTransport{respond: respond}
+	delays := &[]time.Duration{}
+
+	client, err := New(
+		option.WithBaseURL(testBaseURL),
+		option.WithAuthToken("test-key"),
+		option.WithHTTPClient(&http.Client{Transport: transport}),
+		option.WithWarningWriter(io.Discard),
+		option.WithMaxRetries(maxRetries),
+		withRecordedSleep(delays),
+	)
+	if err != nil {
+		tb.Fatalf("New() error = %v", err)
+	}
+	return client, transport, delays
+}
+
+// withRecordedSleep replaces the retry backoff with a recorder. It is a
+// test-only option, which is why it lives here rather than in the option
+// package: nothing outside this suite should be able to disable the backoff.
+func withRecordedSleep(into *[]time.Duration) option.RequestOption {
+	var mu sync.Mutex
+	return requestconfig.RequestOptionFunc(func(cfg *requestconfig.RequestConfig) error {
+		cfg.Sleep = func(_ context.Context, d time.Duration) error {
+			mu.Lock()
+			defer mu.Unlock()
+			*into = append(*into, d)
+			return nil
+		}
+		return nil
+	})
 }
