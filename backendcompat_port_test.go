@@ -228,7 +228,16 @@ func TestSharedBackendCompatibilityTypedResources(t *testing.T) {
 			})
 
 			t.Run("sessions.files.retrieve", func(t *testing.T) {
-				t.Skip(pendingManagedAgents)
+				file, err := client.Sessions.Files.Get(context.Background(), "session_abc", "file_abc")
+				if err != nil {
+					t.Fatalf("Sessions.Files.Get() error = %v", err)
+				}
+				if file.ID != "file_abc" {
+					t.Errorf("id = %q, want %q", file.ID, "file_abc")
+				}
+				if got, want := transport.Last(t).Path(), "/v1/sessions/session_abc/files/file_abc"; got != want {
+					t.Errorf("path = %q, want %q", got, want)
+				}
 			})
 
 			t.Run("triggers.retrieve", func(t *testing.T) {

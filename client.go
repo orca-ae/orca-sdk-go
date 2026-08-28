@@ -50,6 +50,10 @@ type Client struct {
 	// Agents manages agents and their version history.
 	Agents AgentService
 
+	// Sessions manages sessions and everything scoped to one: events, files,
+	// resources, and threads.
+	Sessions SessionService
+
 	// Cloud is the StreamNative Cloud extension surface. Every call through it
 	// is gated on the deployment advertising the cloud.sn.io group.
 	Cloud CloudService
@@ -62,6 +66,7 @@ func newClientFrom(cfg *requestconfig.RequestConfig, discovery *discoveryCache) 
 	}
 	client := &Client{cfg: cfg, discovery: discovery}
 	client.Agents = newAgentService(client)
+	client.Sessions = newSessionService(client)
 	client.Cloud = newCloudService(client)
 	return client
 }

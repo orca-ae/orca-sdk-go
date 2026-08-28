@@ -449,6 +449,110 @@ func (t FlexibleTimestamp) MarshalJSON() ([]byte, error)
 func (t *FlexibleTimestamp) UnmarshalJSON(data []byte) error
 ```
 
+### OutcomeEvaluation
+
+```go
+func (e *OutcomeEvaluation) UnmarshalJSON(data []byte) error
+```
+
+### SessionAgentOverridesParam
+
+```go
+func (p SessionAgentOverridesParam) IsZero() bool
+func (p SessionAgentOverridesParam) MarshalJSON() ([]byte, error)
+```
+
+### SessionAgentParam
+
+```go
+func (p SessionAgentParam) IsZero() bool
+func (p SessionAgentParam) MarshalJSON() ([]byte, error)
+```
+
+### SessionEvent
+
+```go
+func (e *SessionEvent) UnmarshalJSON(data []byte) error
+```
+
+### SessionEventContent
+
+```go
+func (c SessionEventContent) MarshalJSON() ([]byte, error)
+func (c *SessionEventContent) UnmarshalJSON(data []byte) error
+```
+
+### SessionEventParam
+
+```go
+func (e SessionEventParam) MarshalJSON() ([]byte, error)
+```
+
+### SessionEventService
+
+```go
+func (s SessionEventService) List(ctx context.Context, sessionID string, params SessionEventListParams, opts ...option.RequestOption) (*pagination.PageCursor[SessionEvent], error)
+func (s SessionEventService) Send(ctx context.Context, sessionID string, events []SessionEventParam, opts ...option.RequestOption) ([]SessionEvent, error)
+func (s SessionEventService) Stream(ctx context.Context, sessionID string, params SessionEventStreamParams, opts ...option.RequestOption) *ssestream.Stream[SessionEvent]
+```
+
+### SessionFileService
+
+```go
+func (s SessionFileService) Delete(ctx context.Context, sessionID, fileID string, opts ...option.RequestOption) (*SessionFileDeleted, error)
+func (s SessionFileService) Download(ctx context.Context, sessionID, fileID string, writer io.Writer, opts ...option.RequestOption) error
+func (s SessionFileService) Get(ctx context.Context, sessionID, fileID string, opts ...option.RequestOption) (*SessionFile, error)
+func (s SessionFileService) List(ctx context.Context, sessionID string, params SessionFileListParams, opts ...option.RequestOption) (*pagination.PageCursor[SessionFile], error)
+```
+
+### SessionResource
+
+```go
+func (r *SessionResource) UnmarshalJSON(data []byte) error
+```
+
+### SessionResourceParam
+
+```go
+func (p SessionResourceParam) MarshalJSON() ([]byte, error)
+```
+
+### SessionResourceService
+
+```go
+func (s SessionResourceService) Add(ctx context.Context, sessionID string, params SessionResourceParam, opts ...option.RequestOption) (*SessionResource, error)
+func (s SessionResourceService) Delete(ctx context.Context, sessionID, resourceID string, opts ...option.RequestOption) (*SessionResourceDeleted, error)
+func (s SessionResourceService) Get(ctx context.Context, sessionID, resourceID string, opts ...option.RequestOption) (*SessionResource, error)
+func (s SessionResourceService) List(ctx context.Context, sessionID string, params SessionResourceListParams, opts ...option.RequestOption) (*pagination.PageCursor[SessionResource], error)
+func (s SessionResourceService) Update(ctx context.Context, sessionID, resourceID string, params SessionResourceUpdateParams, opts ...option.RequestOption) (*SessionResource, error)
+```
+
+### SessionService
+
+```go
+func (s SessionService) Archive(ctx context.Context, sessionID string, opts ...option.RequestOption) (*Session, error)
+func (s SessionService) Create(ctx context.Context, params SessionNewParams, opts ...option.RequestOption) (*Session, error)
+func (s SessionService) Delete(ctx context.Context, sessionID string, opts ...option.RequestOption) (*SessionDeleted, error)
+func (s SessionService) Get(ctx context.Context, sessionID string, opts ...option.RequestOption) (*Session, error)
+func (s SessionService) List(ctx context.Context, params SessionListParams, opts ...option.RequestOption) (*pagination.PageCursor[Session], error)
+func (s SessionService) Update(ctx context.Context, sessionID string, params SessionUpdateParams, opts ...option.RequestOption) (*Session, error)
+```
+
+### SessionThreadEventService
+
+```go
+func (s SessionThreadEventService) List(ctx context.Context, sessionID, threadID string, params SessionThreadEventListParams, opts ...option.RequestOption) (*pagination.PageCursor[SessionEvent], error)
+func (s SessionThreadEventService) Stream(ctx context.Context, sessionID, threadID string, params SessionThreadEventStreamParams, opts ...option.RequestOption) *ssestream.Stream[SessionEvent]
+```
+
+### SessionThreadService
+
+```go
+func (s SessionThreadService) Archive(ctx context.Context, sessionID, threadID string, opts ...option.RequestOption) (*SessionThread, error)
+func (s SessionThreadService) Get(ctx context.Context, sessionID, threadID string, opts ...option.RequestOption) (*SessionThread, error)
+func (s SessionThreadService) List(ctx context.Context, sessionID string, params SessionThreadListParams, opts ...option.RequestOption) (*pagination.PageCursor[SessionThread], error)
+```
+
 ## Package functions
 
 ```go
@@ -462,6 +566,13 @@ func RosterSelf() AgentRosterEntry
 func New(opts ...option.RequestOption) (*Client, error)
 func ConnectionConfigFromConnection(connection Connection) ConnectionConfig
 func ToConnectionList(configs []ConnectionConfig) ConnectionList
+func AgentRef(id string) SessionAgentParam
+func Text(text string) SessionEventContent
+func UserMessage(text string) SessionEventParam
+func Branch(name string) SessionResourceCheckout
+func Commit(sha string) SessionResourceCheckout
+func FileResource(fileID string) SessionResourceParam
+func MemoryStoreResource(memoryStoreID string) SessionResourceParam
 ```
 
 ## Data types
@@ -489,6 +600,7 @@ func ToConnectionList(configs []ConnectionConfig) ConnectionList
 - `AuthenticationError`
 - `BadRequestError`
 - `BatchSourceConfig`
+- `CacheCreationUsage`
 - `CloudAgentService`
 - `CloudCatalogService`
 - `CloudConnectorService`
@@ -556,6 +668,38 @@ func ToConnectionList(configs []ConnectionConfig) ConnectionList
 - `RestartConnectorOptions`
 - `SecretKeyRef`
 - `ServerInfo`
+- `Session`
+- `SessionAgent`
+- `SessionAgentMember`
+- `SessionAgentMultiagent`
+- `SessionAgentRefType`
+- `SessionDeleted`
+- `SessionEventListParams`
+- `SessionEventOrder`
+- `SessionEventStreamParams`
+- `SessionFile`
+- `SessionFileDeleted`
+- `SessionFileListParams`
+- `SessionListParams`
+- `SessionNewParams`
+- `SessionResourceAccess`
+- `SessionResourceCheckout`
+- `SessionResourceDeleted`
+- `SessionResourceListParams`
+- `SessionResourceType`
+- `SessionResourceUpdateParams`
+- `SessionStats`
+- `SessionStatus`
+- `SessionThread`
+- `SessionThreadEventListParams`
+- `SessionThreadEventStreamParams`
+- `SessionThreadListParams`
+- `SessionThreadStats`
+- `SessionThreadStatus`
+- `SessionThreadUsage`
+- `SessionTiming`
+- `SessionUpdateParams`
+- `SessionUsage`
 - `SinkInstanceStatus`
 - `SinkInstanceStatusData`
 - `SinkStatus`
