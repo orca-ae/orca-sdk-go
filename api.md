@@ -449,6 +449,41 @@ func (t FlexibleTimestamp) MarshalJSON() ([]byte, error)
 func (t *FlexibleTimestamp) UnmarshalJSON(data []byte) error
 ```
 
+### Memory
+
+```go
+func (m Memory) IsPrefix() bool
+```
+
+### MemoryService
+
+```go
+func (s MemoryService) Create(ctx context.Context, memoryStoreID string, params MemoryNewParams, opts ...option.RequestOption) (*Memory, error)
+func (s MemoryService) Delete(ctx context.Context, memoryStoreID, memoryID string, params MemoryDeleteParams, opts ...option.RequestOption) (*MemoryDeleted, error)
+func (s MemoryService) Get(ctx context.Context, memoryStoreID, memoryID string, params MemoryGetParams, opts ...option.RequestOption) (*Memory, error)
+func (s MemoryService) List(ctx context.Context, memoryStoreID string, params MemoryListParams, opts ...option.RequestOption) (*pagination.PageCursor[Memory], error)
+func (s MemoryService) Update(ctx context.Context, memoryStoreID, memoryID string, params MemoryUpdateParams, opts ...option.RequestOption) (*Memory, error)
+```
+
+### MemoryStoreService
+
+```go
+func (s MemoryStoreService) Archive(ctx context.Context, memoryStoreID string, opts ...option.RequestOption) (*MemoryStore, error)
+func (s MemoryStoreService) Create(ctx context.Context, params MemoryStoreNewParams, opts ...option.RequestOption) (*MemoryStore, error)
+func (s MemoryStoreService) Delete(ctx context.Context, memoryStoreID string, opts ...option.RequestOption) (*MemoryStoreDeleted, error)
+func (s MemoryStoreService) Get(ctx context.Context, memoryStoreID string, opts ...option.RequestOption) (*MemoryStore, error)
+func (s MemoryStoreService) List(ctx context.Context, params MemoryStoreListParams, opts ...option.RequestOption) (*pagination.PageCursor[MemoryStore], error)
+func (s MemoryStoreService) Update(ctx context.Context, memoryStoreID string, params MemoryStoreUpdateParams, opts ...option.RequestOption) (*MemoryStore, error)
+```
+
+### MemoryVersionService
+
+```go
+func (s MemoryVersionService) Get(ctx context.Context, memoryStoreID, versionID string, params MemoryVersionGetParams, opts ...option.RequestOption) (*MemoryVersion, error)
+func (s MemoryVersionService) List(ctx context.Context, memoryStoreID string, params MemoryVersionListParams, opts ...option.RequestOption) (*pagination.PageCursor[MemoryVersion], error)
+func (s MemoryVersionService) Redact(ctx context.Context, memoryStoreID, versionID string, opts ...option.RequestOption) (*MemoryVersion, error)
+```
+
 ### OutcomeEvaluation
 
 ```go
@@ -645,6 +680,24 @@ func MemoryStoreResource(memoryStoreID string) SessionResourceParam
 - `InternalServerError`
 - `KafkaConnectionConfig`
 - `McpServerDefinition`
+- `MemoryDeleteParams`
+- `MemoryDeleted`
+- `MemoryGetParams`
+- `MemoryListParams`
+- `MemoryNewBody`
+- `MemoryNewParams`
+- `MemoryStore`
+- `MemoryStoreDeleted`
+- `MemoryStoreListParams`
+- `MemoryStoreNewParams`
+- `MemoryStoreUpdateParams`
+- `MemoryUpdateBody`
+- `MemoryUpdateParams`
+- `MemoryVersion`
+- `MemoryVersionGetParams`
+- `MemoryVersionListParams`
+- `MemoryVersionOperation`
+- `MemoryView`
 - `Message`
 - `ModelEffort`
 - `ModelEffortType`
