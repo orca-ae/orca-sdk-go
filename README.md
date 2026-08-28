@@ -3,9 +3,14 @@
 Go client for the [Orca Agent Engine](https://github.com/orca-ae/orca-managed-agents)
 (OMA), plus the StreamNative Cloud extension surface.
 
+<!-- x-release-please-start-version -->
 ```bash
-go get github.com/orca-ae/orca-sdk-go
+go get -u 'github.com/orca-ae/orca-sdk-go@v0.2.0-rc.1'
 ```
+<!-- x-release-please-end -->
+
+The version above is rewritten by the release pull request, so it always names
+the current release. See [`RELEASING.md`](RELEASING.md).
 
 ## Usage
 

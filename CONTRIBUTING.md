@@ -72,3 +72,7 @@ footer for incompatible changes. Release Please reads them to pick the next
 version and assemble the changelog, then a maintainer merges its release PR to
 publish the tag. Go modules are served from the tag, so there is no separate
 publish step.
+
+Never edit the version in `internal/version.go` or the README install line by
+hand — the release PR rewrites both. [`RELEASING.md`](RELEASING.md) has the full
+process, including how to cut a release candidate.
