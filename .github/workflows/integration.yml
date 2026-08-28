@@ -1,0 +1,44 @@
+name: Integration
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # daily 06:00 UTC
+  push:
+    branches: [main]
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: Live deployment round-trips
+    if: github.event_name != 'pull_request' || github.event.label.name == 'run-integration'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ORCA_TEST_API_KEY: ${{ secrets.ORCA_TEST_API_KEY }}
+      ORCA_TEST_BASE_URL: ${{ vars.ORCA_TEST_BASE_URL }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The tests skip themselves when the credential is absent, which would
+      # make a misconfigured secret look like a pass. Fail loudly instead.
+      - name: Require credentials
+        run: |
+          if [ -z "${ORCA_TEST_API_KEY}" ] || [ -z "${ORCA_TEST_BASE_URL}" ]; then
+            echo "::error::ORCA_TEST_API_KEY secret and ORCA_TEST_BASE_URL variable are both required."
+            exit 1
+          fi
+
+      - name: Run integration tests
+        run: go test -run TestIntegration -v -timeout 20m ./...

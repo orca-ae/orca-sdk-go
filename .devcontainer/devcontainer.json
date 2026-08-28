@@ -1,0 +1,23 @@
+{
+  "name": "orca-sdk-go",
+  "image": "mcr.microsoft.com/devcontainers/go:1-1.25-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "postCreateCommand": "SKIP_BREW=1 ./scripts/bootstrap",
+  "customizations": {
+    "vscode": {
+      "extensions": ["golang.go"],
+      "settings": {
+        "go.lintTool": "staticcheck",
+        "go.formatTool": "gofmt",
+        "gopls": {
+          "formatting.gofumpt": false
+        }
+      }
+    }
+  },
+  "remoteEnv": {
+    "GOFLAGS": "-mod=mod"
+  }
+}

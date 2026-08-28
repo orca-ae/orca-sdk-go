@@ -2,6 +2,9 @@ name: CI
 
 on:
   pull_request:
+    # `labeled` so acknowledging a breaking change re-runs the check that asked
+    # for the acknowledgement, instead of needing a manual re-run.
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   push:
     branches:
       - main
@@ -45,3 +48,118 @@ jobs:
 
       - name: Run tests
         run: ./scripts/test
+
+      # Every skip names a capability the ported test suite specifies and this
+      # SDK does not implement yet. Surfacing the count on each run makes the
+      # remaining work visible without opening the logs.
+      - name: Report outstanding surface
+        run: |
+          set -euo pipefail
+          skips="$(go test -v ./... 2>&1 | grep -c -- '--- SKIP' || true)"
+          echo "### Skipped tests: ${skips}" >> "${GITHUB_STEP_SUMMARY}"
+
+  api-docs:
+    name: API docs current
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Regenerate api.md
+        run: ./scripts/generate-api-docs
+
+      - name: Check api.md is up to date
+        run: |
+          if ! git diff --quiet -- api.md; then
+            echo "::error::api.md is stale. Run ./scripts/generate-api-docs and commit the result."
+            git diff -- api.md
+            exit 1
+          fi
+
+  detect-breaking-changes:
+    name: Detect breaking changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    if: github.event_name == 'pull_request'
+
+    steps:
+      # Full history so `git merge-base HEAD origin/main` can resolve the fork
+      # point; blob:none keeps the fetch cheap by deferring file contents until
+      # the worktree checkout asks for them.
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The script exits 1 for an incompatible change and 2 when it could not
+      # run at all. Those need different reactions, so the outcome is captured
+      # rather than letting the step just fail: a toolchain problem reported as
+      # a breaking change sends a reviewer looking for a break that is not there.
+      - name: Compare exported API against the merge base
+        id: compare
+        run: |
+          set -uo pipefail
+          # The PR's own base, not main. In a stacked pull request the base is
+          # the branch below, so this measures what THIS pull request changes
+          # rather than re-reporting every break already under review beneath it.
+          base_ref="${{ github.event.pull_request.base.ref }}"
+          git fetch --quiet --depth=200 origin "$base_ref"
+          base="$(git merge-base HEAD FETCH_HEAD)"
+          # `|| status=$?` rather than a bare call: Actions runs this shell with
+          # -e, which would kill the step on a non-zero exit before the code
+          # could be captured - and the whole point is to react to it.
+          status=0
+          ./scripts/detect-breaking-changes "$base" || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+
+      # Labels are read live rather than from the event payload, which is a
+      # snapshot taken when the run was queued: re-running after adding the
+      # label would otherwise still see the run without it.
+      - name: Report the result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -uo pipefail
+          acknowledged=false
+          if gh pr view "$PR_NUMBER" --json labels --jq '.labels[].name' |
+              grep -qx 'breaking-change'; then
+            acknowledged=true
+          fi
+
+          case "${{ steps.compare.outputs.status }}" in
+            0)
+              echo "::notice::No incompatible changes to the exported API."
+              ;;
+            1)
+              if [ "$acknowledged" = "true" ]; then
+                echo "::notice::Exported API changed incompatibly; acknowledged by the breaking-change label."
+                exit 0
+              fi
+              echo "::error::Exported API changed incompatibly. Consumers such as orca-cli will fail to build."
+              echo "::error::If this is intended, add the 'breaking-change' label to this PR."
+              exit 1
+              ;;
+            *)
+              echo "::error::The breaking-change comparison could not run. This is a tooling failure, not a finding."
+              exit 1
+              ;;
+          esac

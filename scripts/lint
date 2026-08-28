@@ -5,9 +5,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 echo "==> Checking gofmt"
-if [ -n "$(gofmt -s -l .)" ]; then
+unformatted="$(gofmt -s -l . )"
+if [ -n "$unformatted" ]; then
 	echo "The following files are not formatted. Run ./scripts/format" >&2
-	gofmt -s -l . >&2
+	echo "$unformatted" >&2
 	exit 1
 fi
 
@@ -19,3 +20,17 @@ go build ./...
 
 echo "==> Checking tests compile"
 go test -run=^$ ./...
+
+# The examples are a separate module that replaces this one with the working
+# tree, so building them proves the public API still supports the documented
+# usage. An example that stops compiling is an API break with a worked example
+# attached.
+echo "==> Building examples"
+(cd examples && go build ./...)
+
+echo "==> Checking shell scripts parse"
+for script in scripts/*; do
+	[ -f "$script" ] || continue
+	head -1 "$script" | grep -q '^#!.*sh' || continue
+	bash -n "$script"
+done

@@ -1,0 +1,29 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    steps:
+      # Go modules are served straight from the tag by the module proxy, so
+      # creating the tag is the entire publish step - there is no artifact to
+      # build or upload.
+      - name: Run Release Please
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
