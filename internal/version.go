@@ -6,4 +6,4 @@ package internal
 
 // Version is this SDK's version. Release Please rewrites the literal on
 // release; the trailing annotation is what marks it.
-const Version = "0.2.0-rc.1" // x-release-please-version
+const Version = "0.2.0" // x-release-please-version

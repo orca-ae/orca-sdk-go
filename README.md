@@ -5,7 +5,7 @@ Go client for the [Orca Agent Engine](https://github.com/orca-ae/orca-managed-ag
 
 <!-- x-release-please-start-version -->
 ```bash
-go get -u 'github.com/orca-ae/orca-sdk-go@v0.2.0-rc.1'
+go get -u 'github.com/orca-ae/orca-sdk-go@v0.2.0'
 ```
 <!-- x-release-please-end -->
 
