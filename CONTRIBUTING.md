@@ -76,3 +76,28 @@ publish step.
 Never edit the version in `internal/version.go` or the README install line by
 hand — the release PR rewrites both. [`RELEASING.md`](RELEASING.md) has the full
 process, including how to cut a release candidate.
+
+## CI configuration
+
+Workflows that talk to something outside this repository read their credentials
+from repository secrets. The test workflows gate on them — absent secrets skip
+the job rather than fail it, so a fork or a fresh clone stays green without
+pretending to have run anything. The cost is that an unconfigured job is easy
+to mistake for a passing one — a skipped job finishes in seconds, which is the
+tell.
+
+| Workflow | Needs | Absent |
+| --- | --- | --- |
+| `ci.yml` | nothing | — |
+| `release.yml` | `GITHUB_TOKEN` (automatic) | — |
+| `claude.yml`, `claude-code-review.yml` | `CLAUDE_CODE_OAUTH_TOKEN` (organization) | job fails — no gate |
+| `e2e-managed-agents.yml` | `SNBOT_GITHUB_TOKEN` (organization) | job skips |
+| `e2e-registry-provider.yml` | `SNBOT_GITHUB_TOKEN`, plus `LICENSE`, `OAUTH_CLIENT_ID`, `OAUTH_CLIENT_SECRET` | job skips |
+| `integration.yml` | `ORCA_TEST_API_KEY`, and optionally the `ORCA_TEST_BASE_URL` variable | job skips |
+
+Organization secrets arrive automatically; the rest are repository secrets a
+maintainer sets under **Settings → Secrets and variables → Actions**.
+`ORCA_TEST_BASE_URL` is a *variable*, not a secret, and is optional —
+`integration_port_test.go` falls back to the shared test cluster. Setting it
+without `ORCA_TEST_API_KEY` fails the gate, because that combination is a
+half-finished setup rather than an absent one.
