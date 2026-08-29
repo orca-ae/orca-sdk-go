@@ -12,13 +12,52 @@ permissions:
   contents: read
 
 jobs:
+  secret-gate:
+    name: Check integration credentials
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name != 'pull_request' || github.event.label.name == 'run-integration'
+    outputs:
+      enabled: ${{ steps.gate.outputs.enabled }}
+    steps:
+      # Same reasoning as the E2E gate: a repository that never configured the
+      # credential is not misconfigured, and a permanently red workflow teaches
+      # everyone to ignore it. Skipping leaves the job grey rather than green,
+      # so an unconfigured suite still cannot pass for work it did not do.
+      - name: Decide whether the integration job can run
+        id: gate
+        env:
+          ORCA_TEST_API_KEY: ${{ secrets.ORCA_TEST_API_KEY }}
+          ORCA_TEST_BASE_URL: ${{ vars.ORCA_TEST_BASE_URL }}
+        run: |
+          set -euo pipefail
+          # integrationClient trims before testing for empty, so a
+          # whitespace-only secret skips every test. Trim here too, or the
+          # gate would enable a run that silently exercises nothing.
+          key="$(printf '%s' "${ORCA_TEST_API_KEY:-}" | tr -d '[:space:]')"
+          if [[ -n "${key}" ]]; then
+            echo "enabled=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          # A base URL with no key is half a setup, not an absent one: someone
+          # pointed CI at a deployment and left the credential off. Say so.
+          if [[ -n "${ORCA_TEST_BASE_URL:-}" ]]; then
+            echo "::error::ORCA_TEST_BASE_URL is set but the ORCA_TEST_API_KEY secret is missing."
+            exit 1
+          fi
+          echo "enabled=false" >> "${GITHUB_OUTPUT}"
+          echo "::notice::ORCA_TEST_API_KEY is not configured; skipping the live round-trips."
+
   integration:
     name: Live deployment round-trips
-    if: github.event_name != 'pull_request' || github.event.label.name == 'run-integration'
+    needs: secret-gate
+    if: needs.secret-gate.outputs.enabled == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
       ORCA_TEST_API_KEY: ${{ secrets.ORCA_TEST_API_KEY }}
+      # Optional. integration_port_test.go falls back to the shared test
+      # cluster, so an unset variable is a default, not a missing input.
       ORCA_TEST_BASE_URL: ${{ vars.ORCA_TEST_BASE_URL }}
 
     steps:
@@ -30,15 +69,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-
-      # The tests skip themselves when the credential is absent, which would
-      # make a misconfigured secret look like a pass. Fail loudly instead.
-      - name: Require credentials
-        run: |
-          if [ -z "${ORCA_TEST_API_KEY}" ] || [ -z "${ORCA_TEST_BASE_URL}" ]; then
-            echo "::error::ORCA_TEST_API_KEY secret and ORCA_TEST_BASE_URL variable are both required."
-            exit 1
-          fi
 
       - name: Run integration tests
         run: go test -run TestIntegration -v -timeout 20m ./...
