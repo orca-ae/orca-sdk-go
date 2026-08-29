@@ -25,16 +25,16 @@ jobs:
       # creating the tag is the entire publish step - there is no artifact to
       # build or upload.
       #
-      # The token is not the default GITHUB_TOKEN: this repository disallows
-      # Actions from opening pull requests, which is exactly what Release Please
-      # has to do. Scoping the elevated token to this one workflow is narrower
-      # than lifting that restriction for every workflow in the repository. It
-      # also means the tag is created by a real account, so a tag-triggered
-      # workflow added later actually fires - one created by GITHUB_TOKEN would
-      # not.
+      # The default token, which needs two things this repository now grants:
+      # write, to push the release branch and tag, and permission to open a pull
+      # request, which the organization policy previously withheld from Actions.
+      #
+      # Worth knowing if a tag-triggered workflow is ever added here: a tag
+      # pushed with GITHUB_TOKEN does not trigger other workflows, so such a
+      # workflow would silently never fire and would need a separate token.
       - name: Run Release Please
         uses: googleapis/release-please-action@v4
         with:
-          token: ${{ secrets.SNBOT_GITHUB_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json

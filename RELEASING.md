@@ -82,17 +82,20 @@ git config --global \
   https://github.com/orca-ae/
 ```
 
-## Required secrets
+## Required permissions
 
-The workflow uses `secrets.SNBOT_GITHUB_TOKEN` rather than the default `GITHUB_TOKEN`.
+The workflow uses the default `secrets.GITHUB_TOKEN`. It needs two things, both of which are
+repository settings rather than secrets:
 
-This repository disallows GitHub Actions from creating pull requests, which is precisely what
-Release Please must do — with the default token it pushes its branch and then fails at the pull
-request. Scoping an elevated token to this one workflow is narrower than lifting that restriction
-for every workflow in the repository.
+- **Workflow permissions: read and write.** Release Please pushes its branch and the tag.
+- **Allow GitHub Actions to create and approve pull requests.** Release Please's whole model is a
+  pull request; without this it pushes the branch and then fails with
+  `GitHub Actions is not permitted to create or approve pull requests`. This is governed by an
+  organization policy as well as a repository setting, and the organization one wins.
 
-It also means the tag is created by a real account. A tag created with `GITHUB_TOKEN` does not
-trigger other workflows, so a tag-triggered workflow added later would silently never run.
+One consequence worth knowing before adding a tag-triggered workflow here: a tag pushed with
+`GITHUB_TOKEN` does not trigger other workflows. Such a workflow would silently never fire, and
+would need the tag pushed by a token belonging to a real account instead.
 
 ## When a release goes wrong
 
