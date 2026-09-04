@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/orca-ae/orca-sdk-go/compare/v0.2.0...v0.3.0) (2026-09-04)
+
+
+### Features
+
+* add policy and pricing extension APIs ([e790403](https://github.com/orca-ae/orca-sdk-go/commit/e7904038fe987eccc975b22386b29de350f0f491))
+
 ## [0.2.0](https://github.com/orca-ae/orca-sdk-go/compare/v0.1.0...v0.2.0) (2026-08-29)
 
 
