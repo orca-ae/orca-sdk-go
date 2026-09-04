@@ -6,7 +6,7 @@ extension surface.
 
 <!-- x-release-please-start-version -->
 ```bash
-go get -u 'github.com/orca-ae/orca-sdk-go@v0.2.0'
+go get -u 'github.com/orca-ae/orca-sdk-go@v0.3.0'
 ```
 <!-- x-release-please-end -->
 
