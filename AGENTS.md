@@ -16,7 +16,7 @@ Neither is outstanding work.
 
 ## 1. Source of truth
 
-Three vendored artifacts define the surface. Every exported method maps 1:1 to an
+Four vendored artifacts define the surface. Every exported method maps 1:1 to an
 `operationId` in whichever one governs it. We do not invent operations, rename
 endpoints, or add fields no spec declares.
 
@@ -24,6 +24,7 @@ endpoints, or add fields no spec declares.
 |---|---|---|
 | `openapi/managed-agents.yaml` | No `servers` entry; paths carry `/v1`, `/api`, or `/apis` explicitly. | Core: agents (+versions), sessions (+events, files, resources, threads(.events)), environments, files, skills (+versions), vaults (+credentials), memory stores (+memories, memory versions), triggers (+sessions), discovery. |
 | `openapi/managed-agents-deployment.overlay.yaml` | Applies to `managed-agents.yaml`. | Deviations from the core contract. Its removals define what is **not** portable across both supported backends. |
+| `openapi/managed-agents-extensions.yaml` | Paths carry `/apis/policy.runorca.ai/v1` or `/apis/pricing.runorca.ai/v1`. | Policy guardrails, pricing model prices, and resource discovery for both groups. |
 | `openapi/cloud-extensions.yaml` | `/apis/cloud.sn.io/v1` | The whole `Cloud` namespace: API-resource discovery, agent providers, catalogs, connections, functions, health, packages, sink/source connectors, Kafka Connect. |
 
 Apply the overlay's portability rules to core APIs:

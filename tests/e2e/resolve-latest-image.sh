@@ -9,7 +9,8 @@ e2e::require_env SOURCE_IMAGE
 e2e::require_command docker
 e2e::require_command jq
 
-latest_image="${SOURCE_IMAGE}:latest"
+source_tag=${SOURCE_TAG:-latest}
+requested_image="${SOURCE_IMAGE}:${source_tag}"
 image_platform=${IMAGE_PLATFORM:-linux/amd64}
 image_component=${IMAGE_COMPONENT:-Managed Agents}
 IFS=/ read -r platform_os platform_arch platform_variant extra <<<"${image_platform}"
@@ -18,7 +19,7 @@ if [[ -z "${platform_os}" || -z "${platform_arch}" || -n "${extra:-}" ]]; then
   exit 1
 fi
 
-manifest=$(docker buildx imagetools inspect "${latest_image}" --format '{{json .Manifest}}')
+manifest=$(docker buildx imagetools inspect "${requested_image}" --format '{{json .Manifest}}')
 digest=$(jq -r \
   --arg os "${platform_os}" \
   --arg arch "${platform_arch}" \
@@ -28,7 +29,7 @@ digest=$(jq -r \
     | select($variant == "" or .platform.variant == $variant)
     | .digest' <<<"${manifest}" | head -n 1)
 if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-  echo "failed to resolve ${latest_image} for ${image_platform} to an immutable digest" >&2
+  echo "failed to resolve ${requested_image} for ${image_platform} to an immutable digest" >&2
   exit 1
 fi
 
@@ -45,7 +46,7 @@ fi
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   {
-    echo "source_image=${latest_image}"
+    echo "source_image=${requested_image}"
     echo "resolved_image=${resolved_image}"
     echo "digest=${digest}"
     echo "revision=${revision}"
@@ -57,7 +58,7 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   {
     echo "### ${image_component} compatibility image"
     echo
-    echo "- Requested: \`${latest_image}\`"
+    echo "- Requested: \`${requested_image}\`"
     echo "- Resolved: \`${resolved_image}\`"
     echo "- Platform: \`${image_platform}\`"
     echo "- Source revision: \`${revision}\`"
@@ -65,4 +66,4 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   } >>"${GITHUB_STEP_SUMMARY}"
 fi
 
-printf 'resolved %s to %s (revision %s)\n' "${latest_image}" "${resolved_image}" "${revision}"
+printf 'resolved %s to %s (revision %s)\n' "${requested_image}" "${resolved_image}" "${revision}"

@@ -155,6 +155,36 @@ func TestAgentCreate(t *testing.T) {
 	})
 }
 
+func TestAgentCreateWithGuardrailsUsesPolicyGate(t *testing.T) {
+	t.Parallel()
+
+	client, transport := newRecordingClient(t, func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path == "/apis" {
+			return jsonResponse(http.StatusOK, extensionGroupsJSON(PolicyExtensionGroup)), nil
+		}
+		return jsonResponse(http.StatusCreated, `{"id":"agent_1","guardrail_ids":["grd_shell"]}`), nil
+	})
+	agent, err := client.Agents.Create(context.Background(), AgentNewParams{
+		Model:        Model("m"),
+		Name:         "guarded",
+		GuardrailIDs: []string{"grd_shell"},
+	}, option.WithHeader("orca-beta", "managed-agents-2026-04-01"))
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if len(agent.GuardrailIDs) != 1 || agent.GuardrailIDs[0] != "grd_shell" {
+		t.Fatalf("GuardrailIDs = %v", agent.GuardrailIDs)
+	}
+	calls := transport.Calls()
+	if len(calls) != 2 || calls[0].Path() != "/apis" || calls[1].Path() != "/v1/agents" {
+		t.Fatalf("requests = %#v, want discovery then create", calls)
+	}
+	assertJSONBody(t, calls[1], `{"model":"m","name":"guarded","guardrail_ids":["grd_shell"]}`)
+	if got := calls[1].Header.Get("orca-beta"); got != "managed-agents-2026-04-01" {
+		t.Errorf("orca-beta = %q", got)
+	}
+}
+
 func TestAgentGet(t *testing.T) {
 	t.Parallel()
 
@@ -386,6 +416,31 @@ func TestAgentArchive(t *testing.T) {
 	if agent.ArchivedAt == nil || *agent.ArchivedAt != "2026-01-02T00:00:00Z" {
 		t.Errorf("ArchivedAt = %v, want the archived agent to come back", agent.ArchivedAt)
 	}
+}
+
+func TestAgentUpdateCanClearGuardrails(t *testing.T) {
+	t.Parallel()
+
+	client, transport := newRecordingClient(t, func(req *http.Request) (*http.Response, error) {
+		if req.URL.Path == "/apis" {
+			return jsonResponse(http.StatusOK, extensionGroupsJSON(PolicyExtensionGroup)), nil
+		}
+		return jsonResponse(http.StatusOK, `{"id":"agent_1","guardrail_ids":[]}`), nil
+	})
+	agent, err := client.Agents.Update(context.Background(), "agent_1", AgentUpdateParams{
+		GuardrailIDs: param.Null[[]string](),
+	})
+	if err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if agent.GuardrailIDs == nil || len(agent.GuardrailIDs) != 0 {
+		t.Fatalf("GuardrailIDs = %#v, want a decoded empty slice", agent.GuardrailIDs)
+	}
+	calls := transport.Calls()
+	if len(calls) != 2 {
+		t.Fatalf("requests = %d, want discovery then update", len(calls))
+	}
+	assertJSONBody(t, calls[1], `{"guardrail_ids":null}`)
 }
 
 func TestAgentHasNoDelete(t *testing.T) {

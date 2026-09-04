@@ -1,7 +1,8 @@
 # orca-sdk-go
 
 Go client for the [Orca Agent Engine](https://github.com/orca-ae/orca-managed-agents)
-(OMA), plus the StreamNative Cloud extension surface.
+(OMA), including its policy and pricing extensions, plus the StreamNative Cloud
+extension surface.
 
 <!-- x-release-please-start-version -->
 ```bash
@@ -166,6 +167,36 @@ var unavailable *orca.ExtensionNotAvailableError
 if errors.As(err, &unavailable) {
 	// this deployment has no connections at all, as opposed to none matching
 }
+```
+
+### Policy and pricing extensions
+
+Guardrails and model prices are served by separately discoverable extension
+groups. Their typed services run the same cached capability check before the
+business request:
+
+```go
+guardrail, err := client.Guardrails.Create(ctx, orca.GuardrailNewParams{
+	Name: "protect-production",
+	Rule: orca.GuardrailRule{
+		Kind:    orca.GuardrailRuleBuiltin,
+		Builtin: "block_tools",
+		Params:  map[string]any{"tools": []string{"shell"}},
+	},
+})
+
+prices, err := client.ModelPrices.List(ctx, orca.ModelPriceListParams{})
+```
+
+Attaching guardrails to an agent or a session-local override also requires an
+explicit beta header; the SDK never synthesizes it:
+
+```go
+agent, err := client.Agents.Create(ctx, orca.AgentNewParams{
+	Model:        orca.Model("claude-sonnet-4-6"),
+	Name:         "guarded-agent",
+	GuardrailIDs: []string{guardrail.ID},
+}, option.WithHeader("orca-beta", "managed-agents-2026-04-01"))
 ```
 
 ## Documentation

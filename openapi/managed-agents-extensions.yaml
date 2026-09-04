@@ -1,0 +1,1826 @@
+# Orca Agent Engine extension APIs.
+#
+# Extracted from the generated Managed Agents HTTP contract. Keep these paths
+# aligned with the backend while retaining the core-only contract separately.
+openapi: 3.0.2
+info:
+  title: Orca Agent Engine Extensions API
+  version: 0.0.0
+paths:
+  /apis/policy.runorca.ai/v1:
+    get:
+      summary: Resources served by the policy.runorca.ai/v1 group.
+      tags:
+        - discovery
+        - orca-extension
+      parameters:
+        - name: anthropic-beta
+          in: header
+          schema:
+            type: string
+            description: Accepted for Anthropic SDK compatibility and ignored. No value of this header changes request handling. Typed as a free-form string rather than an enum because this service recognises no specific beta value.
+      operationId: discovery.policyGroupResources
+      responses:
+        '200':
+          description: '200'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kind:
+                    type: string
+                    enum:
+                      - APIResourceList
+                  group_version:
+                    type: string
+                  resources:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          description: Lowercase plural path segment, e.g. `guardrails`.
+                        namespaced:
+                          type: boolean
+                          description: Whether instances belong to a workspace.
+                        kind:
+                          type: string
+                          description: Singular PascalCase type name, e.g. `Guardrail`.
+                      required:
+                        - name
+                        - namespaced
+                        - kind
+                required:
+                  - kind
+                  - group_version
+                  - resources
+  /apis/policy.runorca.ai/v1/guardrails:
+    post:
+      tags:
+        - guardrails
+        - orca-extension
+      parameters:
+        - name: idempotency-key
+          in: header
+          schema:
+            type: string
+        - name: anthropic-beta
+          in: header
+          schema:
+            type: string
+            description: Accepted for Anthropic SDK compatibility and ignored. No value of this header changes request handling. Typed as a free-form string rather than an enum because this service recognises no specific beta value.
+      operationId: guardrails.create
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                description:
+                  type: string
+                  maxLength: 1024
+                  nullable: true
+                enabled:
+                  type: boolean
+                phases:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - request
+                      - tool_call
+                      - tool_result
+                      - response
+                      - llm_request
+                      - llm_response
+                  minItems: 1
+                scope:
+                  type: string
+                  enum:
+                    - organization
+                    - workspace
+                    - explicit
+                rule:
+                  discriminator:
+                    propertyName: kind
+                  oneOf:
+                    - type: object
+                      properties:
+                        kind:
+                          type: string
+                          enum:
+                            - builtin
+                        builtin:
+                          type: string
+                          minLength: 1
+                          maxLength: 200
+                        params:
+                          type: object
+                          additionalProperties: {}
+                      required:
+                        - kind
+                        - builtin
+                      additionalProperties: false
+                    - type: object
+                      properties:
+                        kind:
+                          type: string
+                          enum:
+                            - expression
+                        expression:
+                          type: string
+                          minLength: 1
+                          maxLength: 4096
+                        on_false:
+                          type: string
+                          enum:
+                            - ask
+                            - deny
+                        reason:
+                          type: string
+                          maxLength: 1024
+                      required:
+                        - kind
+                        - expression
+                        - on_false
+                      additionalProperties: false
+                metadata:
+                  default: {}
+                  type: object
+                  additionalProperties:
+                    type: string
+                    maxLength: 512
+              required:
+                - name
+                - rule
+              additionalProperties: false
+        required: true
+      responses:
+        '201':
+          description: '201'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    pattern: ^(?:grd)_[A-Za-z0-9_-]+$
+                  type:
+                    type: string
+                    enum:
+                      - guardrail
+                  name:
+                    type: string
+                    minLength: 1
+                    maxLength: 200
+                  description:
+                    type: string
+                  enabled:
+                    type: boolean
+                  phases:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - request
+                        - tool_call
+                        - tool_result
+                        - response
+                        - llm_request
+                        - llm_response
+                    minItems: 1
+                  scope:
+                    type: string
+                    enum:
+                      - organization
+                      - workspace
+                      - explicit
+                  rule:
+                    discriminator:
+                      propertyName: kind
+                    oneOf:
+                      - type: object
+                        properties:
+                          kind:
+                            type: string
+                            enum:
+                              - builtin
+                          builtin:
+                            type: string
+                            minLength: 1
+                            maxLength: 200
+                          params:
+                            type: object
+                            additionalProperties: {}
+                        required:
+                          - kind
+                          - builtin
+                        additionalProperties: false
+                      - type: object
+                        properties:
+                          kind:
+                            type: string
+                            enum:
+                              - expression
+                          expression:
+                            type: string
+                            minLength: 1
+                            maxLength: 4096
+                          on_false:
+                            type: string
+                            enum:
+                              - ask
+                              - deny
+                          reason:
+                            type: string
+                            maxLength: 1024
+                        required:
+                          - kind
+                          - expression
+                          - on_false
+                        additionalProperties: false
+                  metadata:
+                    default: {}
+                    type: object
+                    additionalProperties:
+                      type: string
+                      maxLength: 512
+                  archived_at:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  created_at:
+                    type: string
+                    format: date-time
+                  updated_at:
+                    type: string
+                    format: date-time
+                required:
+                  - id
+                  - type
+                  - name
+                  - description
+                  - enabled
+                  - phases
+                  - scope
+                  - rule
+                  - archived_at
+                  - created_at
+                  - updated_at
+        '400':
+          description: '400'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - error
+                  error:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - invalid_request_error
+                          - authentication_error
+                          - billing_error
+                          - permission_error
+                          - not_found_error
+                          - conflict_error
+                          - request_too_large
+                          - rate_limit_error
+                          - timeout_error
+                          - overloaded_error
+                          - api_error
+                      message:
+                        type: string
+                    required:
+                      - type
+                      - message
+                  request_id:
+                    type: string
+                    nullable: true
+                required:
+                  - type
+                  - error
+                  - request_id
+        '403':
+          description: '403'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - error
+                  error:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - invalid_request_error
+                          - authentication_error
+                          - billing_error
+                          - permission_error
+                          - not_found_error
+                          - conflict_error
+                          - request_too_large
+                          - rate_limit_error
+                          - timeout_error
+                          - overloaded_error
+                          - api_error
+                      message:
+                        type: string
+                    required:
+                      - type
+                      - message
+                  request_id:
+                    type: string
+                    nullable: true
+                required:
+                  - type
+                  - error
+                  - request_id
+    get:
+      tags:
+        - guardrails
+        - orca-extension
+      parameters:
+        - name: anthropic-beta
+          in: header
+          schema:
+            type: string
+            description: Accepted for Anthropic SDK compatibility and ignored. No value of this header changes request handling. Typed as a free-form string rather than an enum because this service recognises no specific beta value.
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: page
+          in: query
+          schema:
+            type: string
+        - name: include_archived
+          in: query
+          schema:
+            type: boolean
+      operationId: guardrails.list
+      responses:
+        '200':
+          description: '200'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          pattern: ^(?:grd)_[A-Za-z0-9_-]+$
+                        type:
+                          type: string
+                          enum:
+                            - guardrail
+                        name:
+                          type: string
+                          minLength: 1
+                          maxLength: 200
+                        description:
+                          type: string
+                        enabled:
+                          type: boolean
+                        phases:
+                          type: array
+                          items:
+                            type: string
+                            enum:
+                              - request
+                              - tool_call
+                              - tool_result
+                              - response
+                              - llm_request
+                              - llm_response
+                          minItems: 1
+                        scope:
+                          type: string
+                          enum:
+                            - organization
+                            - workspace
+                            - explicit
+                        rule:
+                          discriminator:
+                            propertyName: kind
+                          oneOf:
+                            - type: object
+                              properties:
+                                kind:
+                                  type: string
+                                  enum:
+                                    - builtin
+                                builtin:
+                                  type: string
+                                  minLength: 1
+                                  maxLength: 200
+                                params:
+                                  type: object
+                                  additionalProperties: {}
+                              required:
+                                - kind
+                                - builtin
+                              additionalProperties: false
+                            - type: object
+                              properties:
+                                kind:
+                                  type: string
+                                  enum:
+                                    - expression
+                                expression:
+                                  type: string
+                                  minLength: 1
+                                  maxLength: 4096
+                                on_false:
+                                  type: string
+                                  enum:
+                                    - ask
+                                    - deny
+                                reason:
+                                  type: string
+                                  maxLength: 1024
+                              required:
+                                - kind
+                                - expression
+                                - on_false
+                              additionalProperties: false
+                        metadata:
+                          default: {}
+                          type: object
+                          additionalProperties:
+                            type: string
+                            maxLength: 512
+                        archived_at:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        created_at:
+                          type: string
+                          format: date-time
+                        updated_at:
+                          type: string
+                          format: date-time
+                      required:
+                        - id
+                        - type
+                        - name
+                        - description
+                        - enabled
+                        - phases
+                        - scope
+                        - rule
+                        - archived_at
+                        - created_at
+                        - updated_at
+                  next_page:
+                    type: string
+                    nullable: true
+                required:
+                  - data
+                  - next_page
+        '400':
+          description: '400'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - error
+                  error:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - invalid_request_error
+                          - authentication_error
+                          - billing_error
+                          - permission_error
+                          - not_found_error
+                          - conflict_error
+                          - request_too_large
+                          - rate_limit_error
+                          - timeout_error
+                          - overloaded_error
+                          - api_error
+                      message:
+                        type: string
+                    required:
+                      - type
+                      - message
+                  request_id:
+                    type: string
+                    nullable: true
+                required:
+                  - type
+                  - error
+                  - request_id
+  /apis/policy.runorca.ai/v1/guardrails/{id}:
+    get:
+      tags:
+        - guardrails
+        - orca-extension
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^(?:grd)_[A-Za-z0-9_-]+$
+        - name: anthropic-beta
+          in: header
+          schema:
+            type: string
+            description: Accepted for Anthropic SDK compatibility and ignored. No value of this header changes request handling. Typed as a free-form string rather than an enum because this service recognises no specific beta value.
+      operationId: guardrails.get
+      responses:
+        '200':
+          description: '200'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    pattern: ^(?:grd)_[A-Za-z0-9_-]+$
+                  type:
+                    type: string
+                    enum:
+                      - guardrail
+                  name:
+                    type: string
+                    minLength: 1
+                    maxLength: 200
+                  description:
+                    type: string
+                  enabled:
+                    type: boolean
+                  phases:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - request
+                        - tool_call
+                        - tool_result
+                        - response
+                        - llm_request
+                        - llm_response
+                    minItems: 1
+                  scope:
+                    type: string
+                    enum:
+                      - organization
+                      - workspace
+                      - explicit
+                  rule:
+                    discriminator:
+                      propertyName: kind
+                    oneOf:
+                      - type: object
+                        properties:
+                          kind:
+                            type: string
+                            enum:
+                              - builtin
+                          builtin:
+                            type: string
+                            minLength: 1
+                            maxLength: 200
+                          params:
+                            type: object
+                            additionalProperties: {}
+                        required:
+                          - kind
+                          - builtin
+                        additionalProperties: false
+                      - type: object
+                        properties:
+                          kind:
+                            type: string
+                            enum:
+                              - expression
+                          expression:
+                            type: string
+                            minLength: 1
+                            maxLength: 4096
+                          on_false:
+                            type: string
+                            enum:
+                              - ask
+                              - deny
+                          reason:
+                            type: string
+                            maxLength: 1024
+                        required:
+                          - kind
+                          - expression
+                          - on_false
+                        additionalProperties: false
+                  metadata:
+                    default: {}
+                    type: object
+                    additionalProperties:
+                      type: string
+                      maxLength: 512
+                  archived_at:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  created_at:
+                    type: string
+                    format: date-time
+                  updated_at:
+                    type: string
+                    format: date-time
+                required:
+                  - id
+                  - type
+                  - name
+                  - description
+                  - enabled
+                  - phases
+                  - scope
+                  - rule
+                  - archived_at
+                  - created_at
+                  - updated_at
+        '404':
+          description: '404'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - error
+                  error:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - invalid_request_error
+                          - authentication_error
+                          - billing_error
+                          - permission_error
+                          - not_found_error
+                          - conflict_error
+                          - request_too_large
+                          - rate_limit_error
+                          - timeout_error
+                          - overloaded_error
+                          - api_error
+                      message:
+                        type: string
+                    required:
+                      - type
+                      - message
+                  request_id:
+                    type: string
+                    nullable: true
+                required:
+                  - type
+                  - error
+                  - request_id
+    post:
+      tags:
+        - guardrails
+        - orca-extension
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^(?:grd)_[A-Za-z0-9_-]+$
+        - name: idempotency-key
+          in: header
+          schema:
+            type: string
+        - name: anthropic-beta
+          in: header
+          schema:
+            type: string
+            description: Accepted for Anthropic SDK compatibility and ignored. No value of this header changes request handling. Typed as a free-form string rather than an enum because this service recognises no specific beta value.
+      operationId: guardrails.update
+      requestBody:
+        description: Body
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                description:
+                  type: string
+                  maxLength: 1024
+                  nullable: true
+                enabled:
+                  type: boolean
+                phases:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                      - request
+                      - tool_call
+                      - tool_result
+                      - response
+                      - llm_request
+                      - llm_response
+                  minItems: 1
+                scope:
+                  type: string
+                  enum:
+                    - organization
+                    - workspace
+                    - explicit
+                rule:
+                  discriminator:
+                    propertyName: kind
+                  oneOf:
+                    - type: object
+                      properties:
+                        kind:
+                          type: string
+                          enum:
+                            - builtin
+                        builtin:
+                          type: string
+                          minLength: 1
+                          maxLength: 200
+                        params:
+                          type: object
+                          additionalProperties: {}
+                      required:
+                        - kind
+                        - builtin
+                      additionalProperties: false
+                    - type: object
+                      properties:
+                        kind:
+                          type: string
+                          enum:
+                            - expression
+                        expression:
+                          type: string
+                          minLength: 1
+                          maxLength: 4096
+                        on_false:
+                          type: string
+                          enum:
+                            - ask
+                            - deny
+                        reason:
+                          type: string
+                          maxLength: 1024
+                      required:
+                        - kind
+                        - expression
+                        - on_false
+                      additionalProperties: false
+                metadata:
+                  type: object
+                  additionalProperties:
+                    type: string
+                    maxLength: 512
+                    nullable: true
+              additionalProperties: false
+        required: true
+      responses:
+        '200':
+          description: '200'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    pattern: ^(?:grd)_[A-Za-z0-9_-]+$
+                  type:
+                    type: string
+                    enum:
+                      - guardrail
+                  name:
+                    type: string
+                    minLength: 1
+                    maxLength: 200
+                  description:
+                    type: string
+                  enabled:
+                    type: boolean
+                  phases:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - request
+                        - tool_call
+                        - tool_result
+                        - response
+                        - llm_request
+                        - llm_response
+                    minItems: 1
+                  scope:
+                    type: string
+                    enum:
+                      - organization
+                      - workspace
+                      - explicit
+                  rule:
+                    discriminator:
+                      propertyName: kind
+                    oneOf:
+                      - type: object
+                        properties:
+                          kind:
+                            type: string
+                            enum:
+                              - builtin
+                          builtin:
+                            type: string
+                            minLength: 1
+                            maxLength: 200
+                          params:
+                            type: object
+                            additionalProperties: {}
+                        required:
+                          - kind
+                          - builtin
+                        additionalProperties: false
+                      - type: object
+                        properties:
+                          kind:
+                            type: string
+                            enum:
+                              - expression
+                          expression:
+                            type: string
+                            minLength: 1
+                            maxLength: 4096
+                          on_false:
+                            type: string
+                            enum:
+                              - ask
+                              - deny
+                          reason:
+                            type: string
+                            maxLength: 1024
+                        required:
+                          - kind
+                          - expression
+                          - on_false
+                        additionalProperties: false
+                  metadata:
+                    default: {}
+                    type: object
+                    additionalProperties:
+                      type: string
+                      maxLength: 512
+                  archived_at:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  created_at:
+                    type: string
+                    format: date-time
+                  updated_at:
+                    type: string
+                    format: date-time
+                required:
+                  - id
+                  - type
+                  - name
+                  - description
+                  - enabled
+                  - phases
+                  - scope
+                  - rule
+                  - archived_at
+                  - created_at
+                  - updated_at
+        '400':
+          description: '400'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - error
+                  error:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - invalid_request_error
+                          - authentication_error
+                          - billing_error
+                          - permission_error
+                          - not_found_error
+                          - conflict_error
+                          - request_too_large
+                          - rate_limit_error
+                          - timeout_error
+                          - overloaded_error
+                          - api_error
+                      message:
+                        type: string
+                    required:
+                      - type
+                      - message
+                  request_id:
+                    type: string
+                    nullable: true
+                required:
+                  - type
+                  - error
+                  - request_id
+        '403':
+          description: '403'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - error
+                  error:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - invalid_request_error
+                          - authentication_error
+                          - billing_error
+                          - permission_error
+                          - not_found_error
+                          - conflict_error
+                          - request_too_large
+                          - rate_limit_error
+                          - timeout_error
+                          - overloaded_error
+                          - api_error
+                      message:
+                        type: string
+                    required:
+                      - type
+                      - message
+                  request_id:
+                    type: string
+                    nullable: true
+                required:
+                  - type
+                  - error
+                  - request_id
+        '404':
+          description: '404'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - error
+                  error:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - invalid_request_error
+                          - authentication_error
+                          - billing_error
+                          - permission_error
+                          - not_found_error
+                          - conflict_error
+                          - request_too_large
+                          - rate_limit_error
+                          - timeout_error
+                          - overloaded_error
+                          - api_error
+                      message:
+                        type: string
+                    required:
+                      - type
+                      - message
+                  request_id:
+                    type: string
+                    nullable: true
+                required:
+                  - type
+                  - error
+                  - request_id
+    delete:
+      tags:
+        - guardrails
+        - orca-extension
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^(?:grd)_[A-Za-z0-9_-]+$
+        - name: anthropic-beta
+          in: header
+          schema:
+            type: string
+            description: Accepted for Anthropic SDK compatibility and ignored. No value of this header changes request handling. Typed as a free-form string rather than an enum because this service recognises no specific beta value.
+      operationId: guardrails.delete
+      responses:
+        '200':
+          description: '200'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    pattern: ^(?:grd)_[A-Za-z0-9_-]+$
+                  type:
+                    type: string
+                    enum:
+                      - guardrail_deleted
+                required:
+                  - id
+                  - type
+        '403':
+          description: '403'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - error
+                  error:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - invalid_request_error
+                          - authentication_error
+                          - billing_error
+                          - permission_error
+                          - not_found_error
+                          - conflict_error
+                          - request_too_large
+                          - rate_limit_error
+                          - timeout_error
+                          - overloaded_error
+                          - api_error
+                      message:
+                        type: string
+                    required:
+                      - type
+                      - message
+                  request_id:
+                    type: string
+                    nullable: true
+                required:
+                  - type
+                  - error
+                  - request_id
+        '404':
+          description: '404'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - error
+                  error:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - invalid_request_error
+                          - authentication_error
+                          - billing_error
+                          - permission_error
+                          - not_found_error
+                          - conflict_error
+                          - request_too_large
+                          - rate_limit_error
+                          - timeout_error
+                          - overloaded_error
+                          - api_error
+                      message:
+                        type: string
+                    required:
+                      - type
+                      - message
+                  request_id:
+                    type: string
+                    nullable: true
+                required:
+                  - type
+                  - error
+                  - request_id
+        '409':
+          description: '409'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - error
+                  error:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - invalid_request_error
+                          - authentication_error
+                          - billing_error
+                          - permission_error
+                          - not_found_error
+                          - conflict_error
+                          - request_too_large
+                          - rate_limit_error
+                          - timeout_error
+                          - overloaded_error
+                          - api_error
+                      message:
+                        type: string
+                    required:
+                      - type
+                      - message
+                  request_id:
+                    type: string
+                    nullable: true
+                required:
+                  - type
+                  - error
+                  - request_id
+  /apis/policy.runorca.ai/v1/guardrails/{id}/archive:
+    post:
+      tags:
+        - guardrails
+        - orca-extension
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            pattern: ^(?:grd)_[A-Za-z0-9_-]+$
+        - name: idempotency-key
+          in: header
+          schema:
+            type: string
+        - name: anthropic-beta
+          in: header
+          schema:
+            type: string
+            description: Accepted for Anthropic SDK compatibility and ignored. No value of this header changes request handling. Typed as a free-form string rather than an enum because this service recognises no specific beta value.
+      operationId: guardrails.archive
+      responses:
+        '200':
+          description: '200'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                    pattern: ^(?:grd)_[A-Za-z0-9_-]+$
+                  type:
+                    type: string
+                    enum:
+                      - guardrail
+                  name:
+                    type: string
+                    minLength: 1
+                    maxLength: 200
+                  description:
+                    type: string
+                  enabled:
+                    type: boolean
+                  phases:
+                    type: array
+                    items:
+                      type: string
+                      enum:
+                        - request
+                        - tool_call
+                        - tool_result
+                        - response
+                        - llm_request
+                        - llm_response
+                    minItems: 1
+                  scope:
+                    type: string
+                    enum:
+                      - organization
+                      - workspace
+                      - explicit
+                  rule:
+                    discriminator:
+                      propertyName: kind
+                    oneOf:
+                      - type: object
+                        properties:
+                          kind:
+                            type: string
+                            enum:
+                              - builtin
+                          builtin:
+                            type: string
+                            minLength: 1
+                            maxLength: 200
+                          params:
+                            type: object
+                            additionalProperties: {}
+                        required:
+                          - kind
+                          - builtin
+                        additionalProperties: false
+                      - type: object
+                        properties:
+                          kind:
+                            type: string
+                            enum:
+                              - expression
+                          expression:
+                            type: string
+                            minLength: 1
+                            maxLength: 4096
+                          on_false:
+                            type: string
+                            enum:
+                              - ask
+                              - deny
+                          reason:
+                            type: string
+                            maxLength: 1024
+                        required:
+                          - kind
+                          - expression
+                          - on_false
+                        additionalProperties: false
+                  metadata:
+                    default: {}
+                    type: object
+                    additionalProperties:
+                      type: string
+                      maxLength: 512
+                  archived_at:
+                    type: string
+                    format: date-time
+                    nullable: true
+                  created_at:
+                    type: string
+                    format: date-time
+                  updated_at:
+                    type: string
+                    format: date-time
+                required:
+                  - id
+                  - type
+                  - name
+                  - description
+                  - enabled
+                  - phases
+                  - scope
+                  - rule
+                  - archived_at
+                  - created_at
+                  - updated_at
+        '403':
+          description: '403'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - error
+                  error:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - invalid_request_error
+                          - authentication_error
+                          - billing_error
+                          - permission_error
+                          - not_found_error
+                          - conflict_error
+                          - request_too_large
+                          - rate_limit_error
+                          - timeout_error
+                          - overloaded_error
+                          - api_error
+                      message:
+                        type: string
+                    required:
+                      - type
+                      - message
+                  request_id:
+                    type: string
+                    nullable: true
+                required:
+                  - type
+                  - error
+                  - request_id
+        '404':
+          description: '404'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - error
+                  error:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - invalid_request_error
+                          - authentication_error
+                          - billing_error
+                          - permission_error
+                          - not_found_error
+                          - conflict_error
+                          - request_too_large
+                          - rate_limit_error
+                          - timeout_error
+                          - overloaded_error
+                          - api_error
+                      message:
+                        type: string
+                    required:
+                      - type
+                      - message
+                  request_id:
+                    type: string
+                    nullable: true
+                required:
+                  - type
+                  - error
+                  - request_id
+  /apis/policy.runorca.ai/v1/guardrailtypes:
+    get:
+      tags:
+        - guardrails
+        - orca-extension
+      parameters:
+        - name: anthropic-beta
+          in: header
+          schema:
+            type: string
+            description: Accepted for Anthropic SDK compatibility and ignored. No value of this header changes request handling. Typed as a free-form string rather than an enum because this service recognises no specific beta value.
+      operationId: guardrails.listTypes
+      responses:
+        '200':
+          description: '200'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        title:
+                          type: string
+                        description:
+                          type: string
+                        phases:
+                          type: array
+                          items:
+                            type: string
+                            enum:
+                              - request
+                              - tool_call
+                              - tool_result
+                              - response
+                              - llm_request
+                              - llm_response
+                        stateful:
+                          type: boolean
+                        stateScope:
+                          type: string
+                          enum:
+                            - turn
+                            - session
+                            - subject_window
+                        verdicts:
+                          type: array
+                          items:
+                            type: string
+                            enum:
+                              - ask
+                              - deny
+                        paramsSchema:
+                          type: object
+                          additionalProperties: {}
+                      required:
+                        - name
+                        - title
+                        - description
+                        - phases
+                        - stateful
+                        - verdicts
+                        - paramsSchema
+                required:
+                  - data
+  /apis/pricing.runorca.ai/v1:
+    get:
+      summary: Resources served by the pricing.runorca.ai/v1 group.
+      tags:
+        - discovery
+        - orca-extension
+      parameters:
+        - name: anthropic-beta
+          in: header
+          schema:
+            type: string
+            description: Accepted for Anthropic SDK compatibility and ignored. No value of this header changes request handling. Typed as a free-form string rather than an enum because this service recognises no specific beta value.
+      operationId: discovery.pricingGroupResources
+      responses:
+        '200':
+          description: '200'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kind:
+                    type: string
+                    enum:
+                      - APIResourceList
+                  group_version:
+                    type: string
+                  resources:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          description: Lowercase plural path segment, e.g. `guardrails`.
+                        namespaced:
+                          type: boolean
+                          description: Whether instances belong to a workspace.
+                        kind:
+                          type: string
+                          description: Singular PascalCase type name, e.g. `Guardrail`.
+                      required:
+                        - name
+                        - namespaced
+                        - kind
+                required:
+                  - kind
+                  - group_version
+                  - resources
+  /apis/pricing.runorca.ai/v1/modelprices:
+    get:
+      tags:
+        - modelPrices
+        - orca-extension
+      parameters:
+        - name: anthropic-beta
+          in: header
+          schema:
+            type: string
+            description: Accepted for Anthropic SDK compatibility and ignored. No value of this header changes request handling. Typed as a free-form string rather than an enum because this service recognises no specific beta value.
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+        - name: page
+          in: query
+          schema:
+            type: string
+      operationId: modelPrices.list
+      responses:
+        '200':
+          description: '200'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                          enum:
+                            - model_price
+                        provider:
+                          type: string
+                          minLength: 1
+                          maxLength: 200
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]*$
+                        model_id:
+                          type: string
+                          minLength: 1
+                          maxLength: 200
+                          pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]*$
+                        input_per_million_tokens:
+                          type: number
+                          minimum: 0
+                          exclusiveMinimum: true
+                        output_per_million_tokens:
+                          type: number
+                          minimum: 0
+                          exclusiveMinimum: true
+                        cache_read_per_million_tokens:
+                          type: number
+                          minimum: 0
+                        cache_write_per_million_tokens:
+                          type: number
+                          minimum: 0
+                      required:
+                        - type
+                        - provider
+                        - model_id
+                        - input_per_million_tokens
+                        - output_per_million_tokens
+                        - cache_read_per_million_tokens
+                        - cache_write_per_million_tokens
+                  next_page:
+                    type: string
+                    nullable: true
+                required:
+                  - data
+                  - next_page
+        '400':
+          description: '400'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - error
+                  error:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - invalid_request_error
+                          - authentication_error
+                          - billing_error
+                          - permission_error
+                          - not_found_error
+                          - conflict_error
+                          - request_too_large
+                          - rate_limit_error
+                          - timeout_error
+                          - overloaded_error
+                          - api_error
+                      message:
+                        type: string
+                    required:
+                      - type
+                      - message
+                  request_id:
+                    type: string
+                    nullable: true
+                required:
+                  - type
+                  - error
+                  - request_id
+  /apis/pricing.runorca.ai/v1/modelprices/{model_id}:
+    get:
+      tags:
+        - modelPrices
+        - orca-extension
+      parameters:
+        - name: model_id
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]*$
+        - name: anthropic-beta
+          in: header
+          schema:
+            type: string
+            description: Accepted for Anthropic SDK compatibility and ignored. No value of this header changes request handling. Typed as a free-form string rather than an enum because this service recognises no specific beta value.
+        - name: provider
+          in: query
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+            pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]*$
+      operationId: modelPrices.get
+      responses:
+        '200':
+          description: '200'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - model_price
+                  provider:
+                    type: string
+                    minLength: 1
+                    maxLength: 200
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]*$
+                  model_id:
+                    type: string
+                    minLength: 1
+                    maxLength: 200
+                    pattern: ^[A-Za-z0-9][A-Za-z0-9._:-]*$
+                  input_per_million_tokens:
+                    type: number
+                    minimum: 0
+                    exclusiveMinimum: true
+                  output_per_million_tokens:
+                    type: number
+                    minimum: 0
+                    exclusiveMinimum: true
+                  cache_read_per_million_tokens:
+                    type: number
+                    minimum: 0
+                  cache_write_per_million_tokens:
+                    type: number
+                    minimum: 0
+                required:
+                  - type
+                  - provider
+                  - model_id
+                  - input_per_million_tokens
+                  - output_per_million_tokens
+                  - cache_read_per_million_tokens
+                  - cache_write_per_million_tokens
+        '400':
+          description: '400'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - error
+                  error:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - invalid_request_error
+                          - authentication_error
+                          - billing_error
+                          - permission_error
+                          - not_found_error
+                          - conflict_error
+                          - request_too_large
+                          - rate_limit_error
+                          - timeout_error
+                          - overloaded_error
+                          - api_error
+                      message:
+                        type: string
+                    required:
+                      - type
+                      - message
+                  request_id:
+                    type: string
+                    nullable: true
+                required:
+                  - type
+                  - error
+                  - request_id
+        '404':
+          description: '404'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum:
+                      - error
+                  error:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                        enum:
+                          - invalid_request_error
+                          - authentication_error
+                          - billing_error
+                          - permission_error
+                          - not_found_error
+                          - conflict_error
+                          - request_too_large
+                          - rate_limit_error
+                          - timeout_error
+                          - overloaded_error
+                          - api_error
+                      message:
+                        type: string
+                    required:
+                      - type
+                      - message
+                  request_id:
+                    type: string
+                    nullable: true
+                required:
+                  - type
+                  - error
+                  - request_id
+components:
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: x-api-key
+    oidcBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+security:
+  - apiKey: []
+  - oidcBearer: []

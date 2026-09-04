@@ -414,6 +414,10 @@ type Agent struct {
 	Tools      []AgentTool           `json:"tools"`
 	Skills     []AgentSkill          `json:"skills"`
 
+	// GuardrailIDs is present on policy-extension responses requested with the
+	// managed-agents beta header.
+	GuardrailIDs []string `json:"guardrail_ids,omitzero"`
+
 	// Multiagent is nullable: most agents are not coordinators.
 	Multiagent *AgentMultiagent `json:"multiagent"`
 
@@ -436,13 +440,16 @@ type AgentNewParams struct {
 	Model AgentModelParam `json:"model,omitzero"`
 	Name  string          `json:"name"`
 
-	Description param.Opt[string]          `json:"description,omitzero"`
-	System      param.Opt[string]          `json:"system,omitzero"`
-	McpServers  []AgentMcpServerParam      `json:"mcp_servers,omitzero"`
-	Tools       []AgentTool                `json:"tools,omitzero"`
-	Skills      []AgentSkillParam          `json:"skills,omitzero"`
-	Metadata    map[string]string          `json:"metadata,omitzero"`
-	Multiagent  param.Opt[AgentMultiagent] `json:"multiagent,omitzero"`
+	Description param.Opt[string]     `json:"description,omitzero"`
+	System      param.Opt[string]     `json:"system,omitzero"`
+	McpServers  []AgentMcpServerParam `json:"mcp_servers,omitzero"`
+	Tools       []AgentTool           `json:"tools,omitzero"`
+	Skills      []AgentSkillParam     `json:"skills,omitzero"`
+	// GuardrailIDs explicitly attaches policy guardrails. A non-nil empty slice
+	// is sent as [] and still requires the policy extension and beta header.
+	GuardrailIDs []string                   `json:"guardrail_ids,omitzero"`
+	Metadata     map[string]string          `json:"metadata,omitzero"`
+	Multiagent   param.Opt[AgentMultiagent] `json:"multiagent,omitzero"`
 }
 
 // AgentUpdateParams partially updates an agent.
@@ -464,7 +471,10 @@ type AgentUpdateParams struct {
 	McpServers  param.Opt[[]AgentMcpServerParam] `json:"mcp_servers,omitzero"`
 	Tools       param.Opt[[]AgentTool]           `json:"tools,omitzero"`
 	Skills      param.Opt[[]AgentSkillParam]     `json:"skills,omitzero"`
-	Multiagent  param.Opt[AgentMultiagent]       `json:"multiagent,omitzero"`
+	// GuardrailIDs replaces attached guardrails. Use param.Null[[]string]() to
+	// clear them; any non-absent value requires the policy extension and beta header.
+	GuardrailIDs param.Opt[[]string]        `json:"guardrail_ids,omitzero"`
+	Multiagent   param.Opt[AgentMultiagent] `json:"multiagent,omitzero"`
 
 	// Metadata patches individual keys. A nil value removes its key.
 	Metadata param.Opt[map[string]*string] `json:"metadata,omitzero"`
@@ -489,6 +499,11 @@ type AgentListParams struct {
 
 // Create creates an agent.
 func (s AgentService) Create(ctx context.Context, params AgentNewParams, opts ...option.RequestOption) (*Agent, error) {
+	if params.GuardrailIDs != nil {
+		if err := s.client.ensurePolicyExtension(ctx, opts...); err != nil {
+			return nil, err
+		}
+	}
 	var agent Agent
 	if err := s.client.PostJSON(ctx, "v1/agents", params, &agent, opts...); err != nil {
 		return nil, err
@@ -513,6 +528,11 @@ func (s AgentService) Get(ctx context.Context, agentID string, params AgentGetPa
 // The verb is POST, not PUT: the contract defines a partial update here, and a
 // PUT would imply the body replaces the whole resource.
 func (s AgentService) Update(ctx context.Context, agentID string, params AgentUpdateParams, opts ...option.RequestOption) (*Agent, error) {
+	if !params.GuardrailIDs.IsZero() {
+		if err := s.client.ensurePolicyExtension(ctx, opts...); err != nil {
+			return nil, err
+		}
+	}
 	var agent Agent
 	if err := s.client.PostJSON(ctx, "v1/agents/"+url.PathEscape(agentID), params, &agent, opts...); err != nil {
 		return nil, err

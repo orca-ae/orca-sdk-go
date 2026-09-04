@@ -209,6 +209,10 @@ type SessionAgentParam struct {
 	McpServers []AgentMcpServerParam `json:"mcp_servers,omitzero"`
 	Skills     []AgentSkillParam     `json:"skills,omitzero"`
 
+	// GuardrailIDs applies policy guardrails only to this session's agent
+	// snapshot. A non-nil empty slice is still an explicit override.
+	GuardrailIDs []string `json:"guardrail_ids,omitzero"`
+
 	Extra map[string]any `json:"-"`
 }
 
@@ -219,13 +223,15 @@ func AgentRef(id string) SessionAgentParam { return SessionAgentParam{ID: id} }
 // IsZero reports whether no agent was selected.
 func (p SessionAgentParam) IsZero() bool {
 	return p.Type == "" && p.ID == "" && !p.Version.Valid() && !p.System.Valid() &&
-		p.Model.IsZero() && p.Tools == nil && p.McpServers == nil && p.Skills == nil && p.Extra == nil
+		p.Model.IsZero() && p.Tools == nil && p.McpServers == nil && p.Skills == nil &&
+		p.GuardrailIDs == nil && p.Extra == nil
 }
 
 // MarshalJSON implements [json.Marshaler].
 func (p SessionAgentParam) MarshalJSON() ([]byte, error) {
 	if p.Type == "" && p.ID != "" && !p.Version.Valid() && !p.System.Valid() &&
-		p.Model.IsZero() && p.Tools == nil && p.McpServers == nil && p.Skills == nil && p.Extra == nil {
+		p.Model.IsZero() && p.Tools == nil && p.McpServers == nil && p.Skills == nil &&
+		p.GuardrailIDs == nil && p.Extra == nil {
 		return json.Marshal(p.ID)
 	}
 	type shape SessionAgentParam
@@ -317,6 +323,11 @@ type SessionListParams struct {
 
 // Create creates a session.
 func (s SessionService) Create(ctx context.Context, params SessionNewParams, opts ...option.RequestOption) (*Session, error) {
+	if params.Agent.Type == SessionAgentRefWithOverrides && params.Agent.GuardrailIDs != nil {
+		if err := s.client.ensurePolicyExtension(ctx, opts...); err != nil {
+			return nil, err
+		}
+	}
 	var session Session
 	if err := s.client.PostJSON(ctx, "v1/sessions", params, &session, opts...); err != nil {
 		return nil, err

@@ -74,6 +74,12 @@ type Client struct {
 	// core, not a cloud extension.
 	Triggers TriggerService
 
+	// Guardrails manages policies served by the policy extension.
+	Guardrails GuardrailService
+
+	// ModelPrices reads effective prices served by the pricing extension.
+	ModelPrices ModelPriceService
+
 	// Discovery reports what a deployment can do.
 	Discovery DiscoveryService
 
@@ -96,6 +102,8 @@ func newClientFrom(cfg *requestconfig.RequestConfig, discovery *discoveryCache) 
 	client.Files = FileService{client: client}
 	client.Skills = newSkillService(client)
 	client.Triggers = newTriggerService(client)
+	client.Guardrails = GuardrailService{client: client}
+	client.ModelPrices = ModelPriceService{client: client}
 	client.Discovery = DiscoveryService{client: client}
 	client.Cloud = newCloudService(client)
 	return client

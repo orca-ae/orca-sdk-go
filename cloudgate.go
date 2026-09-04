@@ -133,6 +133,16 @@ func (c *Client) ensureCloudExtension(ctx context.Context, opts ...option.Reques
 	return c.ensureExtensionAvailable(ctx, CloudExtensionGroup, opts...)
 }
 
+// ensurePolicyExtension gates a policy extension call.
+func (c *Client) ensurePolicyExtension(ctx context.Context, opts ...option.RequestOption) error {
+	return c.ensureExtensionAvailable(ctx, PolicyExtensionGroup, opts...)
+}
+
+// ensurePricingExtension gates a pricing extension call.
+func (c *Client) ensurePricingExtension(ctx context.Context, opts ...option.RequestOption) error {
+	return c.ensureExtensionAvailable(ctx, PricingExtensionGroup, opts...)
+}
+
 // getAPIGroupsWithConfig performs the discovery request using an already
 // resolved config, so the probe carries the same deployment, credential and
 // per-call controls as the call that triggered it.

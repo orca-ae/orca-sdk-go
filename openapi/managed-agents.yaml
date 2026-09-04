@@ -357,6 +357,13 @@ paths:
                           - type
                           - skill_id
                   maxItems: 500
+                guardrail_ids:
+                  default: []
+                  type: array
+                  items:
+                    type: string
+                    pattern: ^(?:grd)_[A-Za-z0-9_-]+$
+                  maxItems: 64
                 system:
                   type: string
                   nullable: true
@@ -1015,6 +1022,11 @@ paths:
                             - type
                             - skill_id
                             - version
+                  guardrail_ids:
+                    type: array
+                    items:
+                      type: string
+                      pattern: ^(?:grd)_[A-Za-z0-9_-]+$
                   metadata:
                     type: object
                     additionalProperties:
@@ -1593,6 +1605,11 @@ paths:
                                   - type
                                   - skill_id
                                   - version
+                        guardrail_ids:
+                          type: array
+                          items:
+                            type: string
+                            pattern: ^(?:grd)_[A-Za-z0-9_-]+$
                         metadata:
                           type: object
                           additionalProperties:
@@ -2122,6 +2139,11 @@ paths:
                             - type
                             - skill_id
                             - version
+                  guardrail_ids:
+                    type: array
+                    items:
+                      type: string
+                      pattern: ^(?:grd)_[A-Za-z0-9_-]+$
                   metadata:
                     type: object
                     additionalProperties:
@@ -2465,6 +2487,13 @@ paths:
                           - type
                           - skill_id
                   maxItems: 500
+                  nullable: true
+                guardrail_ids:
+                  type: array
+                  items:
+                    type: string
+                    pattern: ^(?:grd)_[A-Za-z0-9_-]+$
+                  maxItems: 64
                   nullable: true
                 system:
                   type: string
@@ -3125,6 +3154,11 @@ paths:
                             - type
                             - skill_id
                             - version
+                  guardrail_ids:
+                    type: array
+                    items:
+                      type: string
+                      pattern: ^(?:grd)_[A-Za-z0-9_-]+$
                   metadata:
                     type: object
                     additionalProperties:
@@ -3801,6 +3835,11 @@ paths:
                             - type
                             - skill_id
                             - version
+                  guardrail_ids:
+                    type: array
+                    items:
+                      type: string
+                      pattern: ^(?:grd)_[A-Za-z0-9_-]+$
                   metadata:
                     type: object
                     additionalProperties:
@@ -4333,6 +4372,11 @@ paths:
                                   - type
                                   - skill_id
                                   - version
+                        guardrail_ids:
+                          type: array
+                          items:
+                            type: string
+                            pattern: ^(?:grd)_[A-Za-z0-9_-]+$
                         metadata:
                           type: object
                           additionalProperties:
@@ -10045,6 +10089,12 @@ paths:
                                   - type
                                   - skill_id
                           maxItems: 500
+                        guardrail_ids:
+                          type: array
+                          items:
+                            type: string
+                            pattern: ^(?:grd)_[A-Za-z0-9_-]+$
+                          maxItems: 64
                       required:
                         - type
                         - id

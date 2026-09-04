@@ -25,3 +25,27 @@ type DiscoveryService struct {
 func (s DiscoveryService) Groups(ctx context.Context, opts ...option.RequestOption) (*APIGroupList, error) {
 	return s.client.GetAPIGroups(ctx, opts...)
 }
+
+// PolicyGroupResources lists the resources advertised by policy.runorca.ai/v1.
+func (s DiscoveryService) PolicyGroupResources(ctx context.Context, opts ...option.RequestOption) (*APIResourceList, error) {
+	if err := s.client.ensurePolicyExtension(ctx, opts...); err != nil {
+		return nil, err
+	}
+	var result APIResourceList
+	if err := s.client.getRootJSON(ctx, "apis/policy.runorca.ai/v1", &result, opts...); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// PricingGroupResources lists the resources advertised by pricing.runorca.ai/v1.
+func (s DiscoveryService) PricingGroupResources(ctx context.Context, opts ...option.RequestOption) (*APIResourceList, error) {
+	if err := s.client.ensurePricingExtension(ctx, opts...); err != nil {
+		return nil, err
+	}
+	var result APIResourceList
+	if err := s.client.getRootJSON(ctx, "apis/pricing.runorca.ai/v1", &result, opts...); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}

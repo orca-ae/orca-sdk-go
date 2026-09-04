@@ -32,8 +32,9 @@ var (
 	quotedOrHole    = regexp.MustCompile(`"([^"]*)"|(\{\})`)
 )
 
-// sdkPaths returns every request path the SDK's resource files build.
-func sdkPaths(t *testing.T) map[string]struct{} {
+// sdkPaths returns every request path the SDK's resource files build under one
+// of prefixes.
+func sdkPaths(t *testing.T, prefixes ...string) map[string]struct{} {
 	t.Helper()
 
 	sources, err := filepath.Glob("*.go")
@@ -51,9 +52,6 @@ func sdkPaths(t *testing.T) map[string]struct{} {
 			t.Fatalf("reading %s: %v", name, err)
 		}
 		for _, line := range strings.Split(string(source), "\n") {
-			if !strings.Contains(line, `"v1/`) {
-				continue
-			}
 			// Collapse each escaped path parameter to a hole, then stitch the
 			// string literals back together to recover the template.
 			expr := pathEscapeCall.ReplaceAllString(line, "{}")
@@ -61,8 +59,12 @@ func sdkPaths(t *testing.T) map[string]struct{} {
 			for _, match := range quotedOrHole.FindAllStringSubmatch(expr, -1) {
 				built.WriteString(match[1] + match[2])
 			}
-			if template := built.String(); strings.HasPrefix(template, "v1/") {
-				paths["/"+strings.TrimSuffix(template, "/")] = struct{}{}
+			template := built.String()
+			for _, prefix := range prefixes {
+				if strings.HasPrefix(template, prefix) {
+					paths["/"+strings.TrimSuffix(template, "/")] = struct{}{}
+					break
+				}
 			}
 		}
 	}
@@ -89,7 +91,7 @@ func TestEveryCoreSpecPathIsImplemented(t *testing.T) {
 		t.Fatal("no /v1 paths found in the spec; the pattern or the spec changed")
 	}
 
-	built := sdkPaths(t)
+	built := sdkPaths(t, "v1/")
 	for _, path := range specPaths {
 		if reason, excluded := specOnlyPaths[path]; excluded {
 			t.Logf("skipping %s: %s", path, reason)
@@ -117,9 +119,48 @@ func TestNoResourcePathIsAbsentFromTheSpec(t *testing.T) {
 		specTemplates[specPlaceholder.ReplaceAllString(match[1], "{}")] = struct{}{}
 	}
 
-	for path := range sdkPaths(t) {
+	for path := range sdkPaths(t, "v1/") {
 		if _, ok := specTemplates[path]; !ok {
 			t.Errorf("a resource builds %s but the core spec declares no such path", path)
+		}
+	}
+}
+
+func TestEveryPolicyPricingSpecPathIsImplemented(t *testing.T) {
+	t.Parallel()
+
+	spec, err := os.ReadFile("openapi/managed-agents-extensions.yaml")
+	if err != nil {
+		t.Fatalf("reading the vendored policy and pricing spec: %v", err)
+	}
+
+	declared := regexp.MustCompile(`(?m)^  (/apis/(?:policy|pricing)\.runorca\.ai/v1[a-zA-Z0-9/{}_.-]*):`)
+	var specPaths []string
+	for _, match := range declared.FindAllStringSubmatch(string(spec), -1) {
+		specPaths = append(specPaths, match[1])
+	}
+	slices.Sort(specPaths)
+	specPaths = slices.Compact(specPaths)
+	if len(specPaths) == 0 {
+		t.Fatal("no policy or pricing extension paths found in the spec")
+	}
+
+	built := sdkPaths(t, "apis/policy.runorca.ai/v1", "apis/pricing.runorca.ai/v1")
+	for _, path := range specPaths {
+		if _, ok := built[specPlaceholder.ReplaceAllString(path, "{}")]; !ok {
+			t.Errorf("the extension spec declares %s but no resource builds it", path)
+		}
+	}
+	for path := range built {
+		found := false
+		for _, declaredPath := range specPaths {
+			if specPlaceholder.ReplaceAllString(declaredPath, "{}") == path {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("a resource builds %s but the extension spec declares no such path", path)
 		}
 	}
 }

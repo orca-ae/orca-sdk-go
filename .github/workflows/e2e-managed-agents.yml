@@ -45,7 +45,7 @@ jobs:
           echo "enabled=true" >> "${GITHUB_OUTPUT}"
 
   e2e:
-    name: SDK against latest Managed Agents stack
+    name: SDK against pinned Managed Agents stack
     needs: secret-gate
     if: needs.secret-gate.outputs.enabled == 'true'
     runs-on: ${{ vars.E2E_RUNNER || 'ubuntu-latest' }}
@@ -67,6 +67,7 @@ jobs:
             echo "managed_repository=${ORCA_MANAGED_AGENTS_REPOSITORY}"
             echo "registry_image=${ORCA_MANAGED_AGENTS_REGISTRY_IMAGE}"
             echo "harness_image=${ORCA_MANAGED_AGENTS_HARNESS_IMAGE}"
+            echo "image_tag=${ORCA_MANAGED_AGENTS_IMAGE_TAG}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Set up Go
@@ -103,17 +104,19 @@ jobs:
           sudo install -m 0755 "${RUNNER_TEMP}/kind" /usr/local/bin/kind
           kind version
 
-      - name: Resolve latest Managed Agents Registry image
+      - name: Resolve pinned Managed Agents Registry image
         id: registry-image
         env:
           SOURCE_IMAGE: ${{ steps.dependencies.outputs.registry_image }}
+          SOURCE_TAG: ${{ steps.dependencies.outputs.image_tag }}
           IMAGE_COMPONENT: Managed Agents Registry
         run: tests/e2e/resolve-latest-image.sh
 
-      - name: Resolve latest Managed Agents Harness image
+      - name: Resolve pinned Managed Agents Harness image
         id: harness-image
         env:
           SOURCE_IMAGE: ${{ steps.dependencies.outputs.harness_image }}
+          SOURCE_TAG: ${{ steps.dependencies.outputs.image_tag }}
           IMAGE_COMPONENT: Managed Agents Harness
         run: tests/e2e/resolve-latest-image.sh
 
@@ -126,7 +129,7 @@ jobs:
           set -euo pipefail
           [[ "${REGISTRY_REVISION}" =~ ^[0-9a-f]{40}$ ]]
           if [[ "${REGISTRY_REVISION}" != "${HARNESS_REVISION}" ]]; then
-            echo "::error::Registry and Harness latest tags come from different source revisions"
+            echo "::error::Registry and Harness tags come from different source revisions"
             exit 1
           fi
           echo "ref=${REGISTRY_REVISION}" >> "${GITHUB_OUTPUT}"
