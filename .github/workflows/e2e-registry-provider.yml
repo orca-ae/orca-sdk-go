@@ -142,15 +142,12 @@ jobs:
           swapon --show
           free -h
 
-      - uses: actions/setup-go@v7
-        with:
-          go-version: '1.26.0'
-          cache: false
-
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          # The pinned Registry workspace requires Go 1.26. It can also build
+          # this SDK, whose go.mod declares the older minimum version.
+          go-version: '1.26.0'
           cache: true
 
       - name: Check the e2e suite compiles before standing up a cluster
