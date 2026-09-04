@@ -9,6 +9,18 @@ import (
 )
 
 const (
+	// PolicyExtensionGroup is the DNS-scoped policy extension group name.
+	PolicyExtensionGroup = "policy.runorca.ai"
+
+	// PolicyExtensionBasePath is the policy extension's versioned path prefix.
+	PolicyExtensionBasePath = "apis/" + PolicyExtensionGroup + "/v1"
+
+	// PricingExtensionGroup is the DNS-scoped pricing extension group name.
+	PricingExtensionGroup = "pricing.runorca.ai"
+
+	// PricingExtensionBasePath is the pricing extension's versioned path prefix.
+	PricingExtensionBasePath = "apis/" + PricingExtensionGroup + "/v1"
+
 	// CloudExtensionGroup is the DNS-scoped name of the StreamNative Cloud extension group, as
 	// advertised by GET /apis. This is the one constant every path builder and capability check
 	// must share - see the package doc comment on CloudExtensionBasePath for why callers of the

@@ -207,6 +207,46 @@ func TestDiscoveryCloudResourcesRequestShape(t *testing.T) {
 	}
 }
 
+func TestDiscoveryPolicyAndPricingResources(t *testing.T) {
+	t.Parallel()
+
+	client, transport := newRecordingClient(t, func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/apis":
+			return jsonResponse(http.StatusOK,
+				extensionGroupsJSON(PolicyExtensionGroup, PricingExtensionGroup)), nil
+		case "/apis/policy.runorca.ai/v1":
+			return jsonResponse(http.StatusOK, `{"kind":"APIResourceList",`+
+				`"group_version":"policy.runorca.ai/v1","resources":[`+
+				`{"name":"guardrails","namespaced":true,"kind":"Guardrail"}]}`), nil
+		case "/apis/pricing.runorca.ai/v1":
+			return jsonResponse(http.StatusOK, `{"kind":"APIResourceList",`+
+				`"group_version":"pricing.runorca.ai/v1","resources":[`+
+				`{"name":"modelprices","namespaced":false,"kind":"ModelPrice"}]}`), nil
+		default:
+			return jsonResponse(http.StatusNotFound, `{}`), nil
+		}
+	})
+	ctx := context.Background()
+
+	policy, err := client.Discovery.PolicyGroupResources(ctx)
+	if err != nil || len(policy.Resources) != 1 || policy.Resources[0].Name != "guardrails" {
+		t.Fatalf("PolicyGroupResources() = %#v, %v", policy, err)
+	}
+	pricing, err := client.Discovery.PricingGroupResources(ctx)
+	if err != nil || len(pricing.Resources) != 1 || pricing.Resources[0].Name != "modelprices" {
+		t.Fatalf("PricingGroupResources() = %#v, %v", pricing, err)
+	}
+
+	calls := transport.Calls()
+	if len(calls) != 3 {
+		t.Fatalf("requests = %d, want one cached discovery plus two resource lists", len(calls))
+	}
+	if calls[1].Path() != "/apis/policy.runorca.ai/v1" || calls[2].Path() != "/apis/pricing.runorca.ai/v1" {
+		t.Errorf("resource paths = %s, %s", calls[1].Path(), calls[2].Path())
+	}
+}
+
 // TestCloudExtensionPathConstants checks the constants themselves against the
 // literal strings the wire protocol uses, which is the one direction a
 // constant-based assertion is meaningful in: every path builder derives from
@@ -219,6 +259,12 @@ func TestCloudExtensionPathConstants(t *testing.T) {
 	}
 	if CloudExtensionBasePath != "apis/cloud.sn.io/v1" {
 		t.Errorf("CloudExtensionBasePath = %q, want %q", CloudExtensionBasePath, "apis/cloud.sn.io/v1")
+	}
+	if PolicyExtensionGroup != "policy.runorca.ai" || PolicyExtensionBasePath != "apis/policy.runorca.ai/v1" {
+		t.Errorf("policy constants = %q, %q", PolicyExtensionGroup, PolicyExtensionBasePath)
+	}
+	if PricingExtensionGroup != "pricing.runorca.ai" || PricingExtensionBasePath != "apis/pricing.runorca.ai/v1" {
+		t.Errorf("pricing constants = %q, %q", PricingExtensionGroup, PricingExtensionBasePath)
 	}
 }
 

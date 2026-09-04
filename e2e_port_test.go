@@ -18,6 +18,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/orca-ae/orca-sdk-go/option"
+	"github.com/orca-ae/orca-sdk-go/packages/param"
 )
 
 // Ported from orca-sdk-typescript tests/e2e/sdk.test.cjs.
@@ -37,19 +40,16 @@ import (
 //	ORCA_E2E_EXPECT_CLOUD     "true" => the deployment must advertise cloud.sn.io
 //	ORCA_E2E_EXPECT_EXECUTION "true" => the deployment must actually run the agent
 //
-// The nine scenarios and, importantly, the failure-aggregating behaviour are
-// preserved: a failing scenario is recorded and the run continues, so one bad
-// surface does not hide the state of the other eight, and cleanup always runs.
+// The scenarios preserve the TypeScript suite's failure-aggregating behaviour:
+// a failing scenario is recorded and the run continues, so one bad surface
+// does not hide the others, and cleanup always runs.
 // That is why the scenario bodies return errors instead of calling t.Fatalf —
 // a Fatalf would abort the goroutine and skip both the remaining scenarios and
 // the resource cleanup.
 //
-// The typed Managed Agents resources do not exist in this SDK yet, so the core
-// scenarios drive ManagedAgentsClient, the untyped passthrough in
-// managed_agents.go. Discovery and the cloud extension surface use the typed
-// Go clients. One TypeScript assertion has no Go equivalent and is noted
-// inline: the SDK-side ExtensionNotAvailableError, which the Go client does
-// not model — it surfaces the deployment's own 404 instead.
+// Policy, pricing, agent, session, discovery, and cloud scenarios use the typed
+// services. The remaining core scenarios keep the untyped compatibility client
+// so this suite continues to exercise that public surface too.
 
 const (
 	e2eBaseURLEnv         = "ORCA_BASE_URL"
@@ -82,6 +82,7 @@ type e2eRun struct {
 	expectExecution  bool
 	agentID          string
 	agentVersion     interface{}
+	guardrailID      string
 	environmentID    string
 	fileID           string
 	sessionID        string
@@ -221,7 +222,7 @@ func (r *e2eRun) e2eListContains(ctx context.Context, path string, query url.Val
 // Scenarios
 // ---------------------------------------------------------------------------
 
-// e2eDiscovery is scenario 1: the advertised topology matches what the caller
+// e2eDiscovery checks that the advertised topology matches what the caller
 // declared through ORCA_E2E_EXPECT_CLOUD.
 func (r *e2eRun) e2eDiscovery(ctx context.Context) error {
 	groups, err := r.client.GetAPIGroups(ctx)
@@ -236,7 +237,7 @@ func (r *e2eRun) e2eDiscovery(ctx context.Context) error {
 	}
 
 	if r.expectCloud {
-		resources, err := r.client.GetCloudAPIResources(ctx)
+		resources, err := r.client.Cloud.APIResources.List(ctx)
 		if err != nil {
 			return fmt.Errorf("cloud API resources: %w", err)
 		}
@@ -249,17 +250,124 @@ func (r *e2eRun) e2eDiscovery(ctx context.Context) error {
 		return nil
 	}
 
-	// TypeScript asserts an SDK-side ExtensionNotAvailableError here, raised
-	// before the request leaves the process. This Go client does not model
-	// extension gating, so the closest faithful assertion is that the call
-	// fails against a deployment that does not serve the group.
-	if _, err := r.client.GetCloudAPIResources(ctx); err == nil {
+	if _, err := r.client.Cloud.APIResources.List(ctx); err == nil {
 		return fmt.Errorf("cloud API resources succeeded although %s is not advertised", CloudExtensionGroup)
+	} else {
+		var unavailable *ExtensionNotAvailableError
+		if !errors.As(err, &unavailable) || unavailable.Group != CloudExtensionGroup {
+			return fmt.Errorf("cloud API resources error = %v, want %s ExtensionNotAvailableError", err, CloudExtensionGroup)
+		}
+	}
+
+	policy, err := r.client.Discovery.PolicyGroupResources(ctx)
+	if err != nil {
+		return fmt.Errorf("policy API resources: %w", err)
+	}
+	if policy.GroupVersion != PolicyExtensionGroup+"/v1" || !e2eHasResource(policy, "guardrails") {
+		return fmt.Errorf("policy API resources = %#v, want guardrails", policy)
+	}
+	pricing, err := r.client.Discovery.PricingGroupResources(ctx)
+	if err != nil {
+		return fmt.Errorf("pricing API resources: %w", err)
+	}
+	if pricing.GroupVersion != PricingExtensionGroup+"/v1" || !e2eHasResource(pricing, "modelprices") {
+		return fmt.Errorf("pricing API resources = %#v, want modelprices", pricing)
 	}
 	return nil
 }
 
-// e2eEnvironmentScenario is scenario 2.
+func e2eHasResource(resources *APIResourceList, name string) bool {
+	for _, resource := range resources.Resources {
+		if resource.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *e2eRun) e2eGuardrailScenario(ctx context.Context) error {
+	types, err := r.client.Guardrails.ListTypes(ctx)
+	if err != nil {
+		return fmt.Errorf("list types: %w", err)
+	}
+	foundBuiltin := false
+	for _, guardrailType := range types.Data {
+		if guardrailType.Name == "block_tools" {
+			foundBuiltin = true
+			break
+		}
+	}
+	if !foundBuiltin {
+		return errors.New("guardrail type list does not include block_tools")
+	}
+
+	created, err := r.client.Guardrails.Create(ctx, GuardrailNewParams{
+		Name:        r.prefix + "-guardrail",
+		Description: param.String("created by SDK E2E"),
+		Phases:      []GuardrailPhase{GuardrailPhaseRequest},
+		Scope:       param.New(GuardrailScopeExplicit),
+		Rule: GuardrailRule{
+			Kind:       GuardrailRuleExpression,
+			Expression: "true",
+			OnFalse:    GuardrailVerdictDeny,
+		},
+		Metadata: map[string]string{"suite": "orca-sdk-e2e"},
+	})
+	if err != nil {
+		return fmt.Errorf("create: %w", err)
+	}
+	r.guardrailID = created.ID
+
+	updated, err := r.client.Guardrails.Update(ctx, created.ID, GuardrailUpdateParams{
+		Description: param.String("updated by SDK E2E"),
+	})
+	if err != nil {
+		return fmt.Errorf("update: %w", err)
+	}
+	if updated.Description != "updated by SDK E2E" {
+		return fmt.Errorf("updated description = %q", updated.Description)
+	}
+	retrieved, err := r.client.Guardrails.Get(ctx, updated.ID)
+	if err != nil {
+		return fmt.Errorf("retrieve: %w", err)
+	}
+	if retrieved.ID != updated.ID {
+		return fmt.Errorf("retrieved id = %q, want %q", retrieved.ID, updated.ID)
+	}
+	page, err := r.client.Guardrails.List(ctx, GuardrailListParams{Limit: param.Int(100)})
+	if err != nil {
+		return fmt.Errorf("list: %w", err)
+	}
+	for _, guardrail := range page.Data {
+		if guardrail.ID == updated.ID {
+			return nil
+		}
+	}
+	return fmt.Errorf("guardrail %s is not in the listing", updated.ID)
+}
+
+func (r *e2eRun) e2eModelPriceScenario(ctx context.Context) error {
+	page, err := r.client.ModelPrices.List(ctx, ModelPriceListParams{Limit: param.Int(10)})
+	if err != nil {
+		return fmt.Errorf("list: %w", err)
+	}
+	if len(page.Data) == 0 {
+		return errors.New("seeded model price catalog is empty")
+	}
+	first := page.Data[0]
+	retrieved, err := r.client.ModelPrices.Get(ctx, first.ModelID, ModelPriceGetParams{
+		Provider: param.String(first.Provider),
+	})
+	if err != nil {
+		return fmt.Errorf("retrieve: %w", err)
+	}
+	if *retrieved != first {
+		return fmt.Errorf("retrieved price = %#v, want %#v", retrieved, first)
+	}
+	return nil
+}
+
+// e2eEnvironmentScenario exercises the environment lifecycle.
 func (r *e2eRun) e2eEnvironmentScenario(ctx context.Context) error {
 	created, err := r.agents.Create(ctx, "/v1/environments", map[string]interface{}{
 		"name":        r.prefix + "-environment",
@@ -309,60 +417,70 @@ func (r *e2eRun) e2eEnvironmentScenario(ctx context.Context) error {
 	return r.e2eListContains(ctx, "/v1/environments", url.Values{"limit": {"100"}}, r.environmentID)
 }
 
-// e2eAgentScenario is scenario 3.
 func (r *e2eRun) e2eAgentScenario(ctx context.Context) error {
-	created, err := r.agents.Create(ctx, "/v1/agents", map[string]interface{}{
-		"name": r.prefix + "-agent",
-		"model": map[string]interface{}{
-			"provider": "anthropic",
-			"id":       "claude-sonnet-4-5-20250929",
+	params := AgentNewParams{
+		Name: r.prefix + "-agent",
+		Model: AgentModelParam{
+			ID:       "claude-sonnet-4-5-20250929",
+			Provider: param.String("anthropic"),
 		},
-		"system":   "Return concise answers.",
-		"metadata": map[string]interface{}{"suite": "orca-sdk-e2e"},
-	})
+		System:   param.String("Return concise answers."),
+		Metadata: map[string]string{"suite": "orca-sdk-e2e"},
+	}
+	var opts []option.RequestOption
+	if r.guardrailID != "" {
+		params.GuardrailIDs = []string{r.guardrailID}
+		opts = append(opts, option.WithHeader("orca-beta", "managed-agents-2026-04-01"))
+	}
+	created, err := r.client.Agents.Create(ctx, params, opts...)
 	if err != nil {
 		return fmt.Errorf("create: %w", err)
 	}
-	agent, err := e2eObject("create agent", created)
-	if err != nil {
-		return err
+	if created.ID == "" {
+		return errors.New("create agent returned an empty id")
 	}
-	if r.agentID, err = e2eString("create agent", agent, "id"); err != nil {
-		return err
-	}
-	r.agentVersion = agent["version"]
+	r.agentID = created.ID
+	r.agentVersion = created.Version
 
-	raw, err := r.agents.Update(ctx, http.MethodPost, "/v1/agents/"+url.PathEscape(r.agentID),
-		map[string]interface{}{"description": "updated by SDK E2E"})
+	updated, err := r.client.Agents.Update(ctx, r.agentID, AgentUpdateParams{
+		Description: param.String("updated by SDK E2E"),
+	}, opts...)
 	if err != nil {
 		return fmt.Errorf("update: %w", err)
 	}
-	updated, err := e2eObject("update agent", raw)
-	if err != nil {
-		return err
+	if updated.Description == nil || *updated.Description != "updated by SDK E2E" {
+		return fmt.Errorf("updated description = %v", updated.Description)
 	}
-	if err := e2eEqual("updated description", updated["description"], "updated by SDK E2E"); err != nil {
-		return err
+	if r.guardrailID != "" && (len(updated.GuardrailIDs) != 1 || updated.GuardrailIDs[0] != r.guardrailID) {
+		return fmt.Errorf("updated guardrail_ids = %v, want %s", updated.GuardrailIDs, r.guardrailID)
 	}
-	r.agentVersion = updated["version"]
+	r.agentVersion = updated.Version
 
-	raw, err = r.agents.Get(ctx, "/v1/agents/"+url.PathEscape(r.agentID))
+	retrieved, err := r.client.Agents.Get(ctx, r.agentID, AgentGetParams{}, opts...)
 	if err != nil {
 		return fmt.Errorf("retrieve: %w", err)
 	}
-	retrieved, err := e2eObject("retrieve agent", raw)
-	if err != nil {
-		return err
+	if retrieved.ID != r.agentID {
+		return fmt.Errorf("retrieved id = %q, want %q", retrieved.ID, r.agentID)
 	}
-	if err := e2eEqual("retrieved id", retrieved["id"], r.agentID); err != nil {
-		return err
+	if r.guardrailID != "" && (len(retrieved.GuardrailIDs) != 1 || retrieved.GuardrailIDs[0] != r.guardrailID) {
+		return fmt.Errorf("retrieved guardrail_ids = %v, want %s", retrieved.GuardrailIDs, r.guardrailID)
 	}
 
-	return r.e2eListContains(ctx, "/v1/agents", url.Values{"limit": {"100"}}, r.agentID)
+	page, err := r.client.Agents.List(ctx, AgentListParams{Limit: param.Int(100)}, opts...)
+	if err != nil {
+		return fmt.Errorf("list: %w", err)
+	}
+	for _, agent := range page.Data {
+		if agent.ID == r.agentID {
+			return nil
+		}
+	}
+	return fmt.Errorf("agent %s is not in the listing", r.agentID)
 }
 
-// e2eTriggerScenario is scenario 4: create, retrieve, update, list, session
-// history, and the pause/unpause actions.
+// e2eTriggerScenario exercises create, retrieve, update, list, session history,
+// and the pause/unpause actions.
 func (r *e2eRun) e2eTriggerScenario(ctx context.Context) error {
 	if r.agentID == "" {
 		return errors.New("agent scenario did not create an agent")
@@ -488,7 +606,7 @@ func (r *e2eRun) e2eTriggerScenario(ctx context.Context) error {
 	return e2eEqual("paused status", paused["status"], "paused")
 }
 
-// e2eFileScenario is scenario 5. The deployment deliberately denies content
+// e2eFileScenario exercises file operations. The deployment deliberately denies content
 // download, so a 403 is the expected outcome, not a failure.
 func (r *e2eRun) e2eFileScenario(ctx context.Context) error {
 	uploaded, err := r.agents.DoMultipart(ctx, http.MethodPost, "/v1/files", MultipartRequest{
@@ -538,7 +656,6 @@ func (r *e2eRun) e2eFileScenario(ctx context.Context) error {
 	return nil
 }
 
-// e2eSessionScenario is scenario 6.
 func (r *e2eRun) e2eSessionScenario(ctx context.Context) error {
 	if r.agentID == "" {
 		return errors.New("agent scenario did not create an agent")
@@ -547,39 +664,53 @@ func (r *e2eRun) e2eSessionScenario(ctx context.Context) error {
 		return errors.New("environment scenario did not create an environment")
 	}
 
-	created, err := r.agents.Create(ctx, "/v1/sessions", map[string]interface{}{
-		"agent":          r.agentID,
-		"environment_id": r.environmentID,
-		"title":          r.prefix + "-session",
-	})
+	params := SessionNewParams{
+		Agent:         AgentRef(r.agentID),
+		EnvironmentID: r.environmentID,
+		Title:         param.String(r.prefix + "-session"),
+	}
+	var opts []option.RequestOption
+	if r.guardrailID != "" {
+		params.Agent = SessionAgentParam{
+			Type:         SessionAgentRefWithOverrides,
+			ID:           r.agentID,
+			GuardrailIDs: []string{r.guardrailID},
+		}
+		opts = append(opts, option.WithHeader("orca-beta", "managed-agents-2026-04-01"))
+	}
+	created, err := r.client.Sessions.Create(ctx, params, opts...)
 	if err != nil {
 		return fmt.Errorf("create: %w", err)
 	}
-	session, err := e2eObject("create session", created)
-	if err != nil {
-		return err
+	if created.ID == "" {
+		return errors.New("create session returned an empty id")
 	}
-	if r.sessionID, err = e2eString("create session", session, "id"); err != nil {
-		return err
-	}
+	r.sessionID = created.ID
 
-	raw, err := r.agents.Get(ctx, "/v1/sessions/"+url.PathEscape(r.sessionID))
+	retrieved, err := r.client.Sessions.Get(ctx, r.sessionID)
 	if err != nil {
 		return fmt.Errorf("retrieve: %w", err)
 	}
-	retrieved, err := e2eObject("retrieve session", raw)
-	if err != nil {
-		return err
-	}
-	if err := e2eEqual("retrieved id", retrieved["id"], r.sessionID); err != nil {
-		return err
+	if retrieved.ID != r.sessionID {
+		return fmt.Errorf("retrieved id = %q, want %q", retrieved.ID, r.sessionID)
 	}
 
-	return r.e2eListContains(ctx, "/v1/sessions",
-		url.Values{"agent_id": {r.agentID}, "limit": {"100"}}, r.sessionID)
+	page, err := r.client.Sessions.List(ctx, SessionListParams{
+		AgentID: param.String(r.agentID),
+		Limit:   param.Int(100),
+	})
+	if err != nil {
+		return fmt.Errorf("list: %w", err)
+	}
+	for _, session := range page.Data {
+		if session.ID == r.sessionID {
+			return nil
+		}
+	}
+	return fmt.Errorf("session %s is not in the listing", r.sessionID)
 }
 
-// e2eExecutionScenario is scenario 7: send a prompt carrying a unique marker,
+// e2eExecutionScenario sends a prompt carrying a unique marker,
 // poll the event log until the agent echoes it, then prove the SSE stream
 // replays the same reply from the beginning of the log.
 func (r *e2eRun) e2eExecutionScenario(ctx context.Context) error {
@@ -707,7 +838,7 @@ func (r *e2eRun) e2eAssertSSEReplay(ctx context.Context, expectedReply string) e
 	return errors.New("SSE replay did not include the deterministic reply")
 }
 
-// e2eCloudScenario is scenario 8.
+// e2eCloudScenario exercises cloud provider and connection discovery.
 func (r *e2eRun) e2eCloudScenario(ctx context.Context) error {
 	providers := NewProvidersClient(r.client)
 
@@ -743,7 +874,7 @@ func (r *e2eRun) e2eCloudScenario(ctx context.Context) error {
 	return nil
 }
 
-// e2eCleanup is scenario 9 when strict, and the always-runs safety net
+// e2eCleanup is the final scenario when strict, and the always-runs safety net
 // otherwise. It tears resources down in dependency order — trigger, session,
 // agent, environment, file — and aggregates its own failures so one stuck
 // resource does not strand the rest.
@@ -781,8 +912,46 @@ func (r *e2eRun) e2eCleanup(ctx context.Context, strict bool) error {
 	}
 	if r.agentID != "" {
 		id := r.agentID
+		if r.guardrailID != "" {
+			step("clear agent guardrails", func() error {
+				updated, err := r.client.Agents.Update(ctx, id, AgentUpdateParams{
+					GuardrailIDs: param.Null[[]string](),
+				}, option.WithHeader("orca-beta", "managed-agents-2026-04-01"))
+				if err != nil {
+					return err
+				}
+				if updated.GuardrailIDs == nil || len(updated.GuardrailIDs) != 0 {
+					return fmt.Errorf("guardrail_ids = %v, want []", updated.GuardrailIDs)
+				}
+				return nil
+			})
+		}
 		step("archive agent", func() error {
 			return r.e2eArchive(ctx, "/v1/agents/"+url.PathEscape(id)+"/archive", id, func() { r.agentID = "" })
+		})
+	}
+	if r.guardrailID != "" {
+		id := r.guardrailID
+		step("archive guardrail", func() error {
+			archived, err := r.client.Guardrails.Archive(ctx, id)
+			if err != nil {
+				return err
+			}
+			if archived.ArchivedAt == nil {
+				return errors.New("archived_at is null after archiving the guardrail")
+			}
+			return nil
+		})
+		step("delete guardrail", func() error {
+			deleted, err := r.client.Guardrails.Delete(ctx, id)
+			if err != nil {
+				return err
+			}
+			if deleted.ID != id || deleted.Type != "guardrail_deleted" {
+				return fmt.Errorf("tombstone = %#v, want guardrail_deleted for %s", deleted, id)
+			}
+			r.guardrailID = ""
+			return nil
 		})
 	}
 	if r.environmentID != "" {
@@ -853,7 +1022,7 @@ func TestE2ESDKExercisesDeployedTopology(t *testing.T) {
 	defer cancel()
 
 	// The safety-net cleanup runs whatever happened above, and is a no-op once
-	// scenario 9 has already torn everything down.
+	// the final scenario has already torn everything down.
 	defer func() {
 		if run.cleanupSucceeded {
 			return
@@ -866,6 +1035,14 @@ func TestE2ESDKExercisesDeployedTopology(t *testing.T) {
 	run.scenario("extension discovery matches the topology", func() error {
 		return run.e2eDiscovery(ctx)
 	})
+	if !run.expectCloud {
+		run.scenario("guardrail create, list types, list, update, and retrieve", func() error {
+			return run.e2eGuardrailScenario(ctx)
+		})
+		run.scenario("model price list and retrieve", func() error {
+			return run.e2eModelPriceScenario(ctx)
+		})
+	}
 	run.scenario("environment create, list, update, and retrieve", func() error {
 		return run.e2eEnvironmentScenario(ctx)
 	})

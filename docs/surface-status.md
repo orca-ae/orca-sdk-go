@@ -3,11 +3,12 @@
 Which Orca API surfaces this SDK covers, and what is deliberately absent. It is
 updated whenever an operation lands or is removed.
 
-Three vendored artifacts govern the surface (see `AGENTS.md` §1):
+Four vendored artifacts govern the surface (see `AGENTS.md` §1):
 `openapi/managed-agents.yaml` defines core operations,
 `openapi/managed-agents-deployment.overlay.yaml` removes what is not portable
-across both supported backends, and `openapi/cloud-extensions.yaml` governs
-`client.Cloud.*`.
+across both supported backends, `openapi/managed-agents-extensions.yaml`
+defines policy and pricing extensions, and `openapi/cloud-extensions.yaml`
+governs `client.Cloud.*`.
 
 `api.md` is the generated index of every exported symbol. This document is the
 narrative counterpart: what each surface is for, and where the contract has a
@@ -101,6 +102,24 @@ a deployment implementing only the narrower cron subset returns its own error.
 
 `Groups` lists the extension API groups a deployment serves. An empty list is a
 normal deployment with no extensions installed, not an error.
+
+`PolicyGroupResources` and `PricingGroupResources` list the resources advertised
+by those extension groups. Both calls are gated on discovery.
+
+## Policy and pricing extensions
+
+### Guardrails — `client.Guardrails`
+
+Served under `/apis/policy.runorca.ai/v1`. `Create`, `List`, `Get`, `Update`,
+`Archive`, `Delete`, and `ListTypes` are all gated on the policy extension.
+Agent attachments and session-local overrides use `guardrail_ids`, require the
+same gate, and leave beta opt-in to the caller's `orca-beta` header.
+
+### Model prices — `client.ModelPrices`
+
+Served under `/apis/pricing.runorca.ai/v1`. `List` reads the effective price
+catalog and `Get` retrieves one model, optionally qualified by provider. Both
+calls are gated on the pricing extension.
 
 ## Cloud extensions — `client.Cloud.*`
 

@@ -5,6 +5,7 @@ package orca
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"slices"
 	"testing"
@@ -99,6 +100,60 @@ func TestSessionCreate(t *testing.T) {
 		assertJSONBody(t, transport.Only(t), `{"agent":{"type":"agent_with_overrides","id":"agent_abc",`+
 			`"version":2,"system":"Override system prompt"},"environment_id":"env_123",`+
 			`"initial_events":[{"type":"user.message","content":[{"type":"text","text":"Start"}]}]}`)
+	})
+
+	t.Run("gates session-local guardrails on the policy extension", func(t *testing.T) {
+		t.Parallel()
+
+		client, transport := newRecordingClient(t, func(req *http.Request) (*http.Response, error) {
+			if req.URL.Path == "/apis" {
+				return jsonResponse(http.StatusOK, extensionGroupsJSON(PolicyExtensionGroup)), nil
+			}
+			return jsonResponse(http.StatusCreated, `{"id":"session_1"}`), nil
+		})
+		_, err := client.Sessions.Create(context.Background(), SessionNewParams{
+			Agent: SessionAgentParam{
+				Type:         SessionAgentRefWithOverrides,
+				ID:           "agent_abc",
+				GuardrailIDs: []string{"grd_session"},
+			},
+			EnvironmentID: "env_123",
+		})
+		if err != nil {
+			t.Fatalf("Create() error = %v", err)
+		}
+		calls := transport.Calls()
+		if len(calls) != 2 || calls[0].Path() != "/apis" || calls[1].Path() != "/v1/sessions" {
+			t.Fatalf("requests = %#v, want discovery then create", calls)
+		}
+		assertJSONBody(t, calls[1], `{"agent":{"type":"agent_with_overrides","id":"agent_abc",`+
+			`"guardrail_ids":["grd_session"]},"environment_id":"env_123"}`)
+	})
+
+	t.Run("rejects session-local guardrails when policy is unavailable", func(t *testing.T) {
+		t.Parallel()
+
+		client, transport := newRecordingClient(t, func(req *http.Request) (*http.Response, error) {
+			if req.URL.Path == "/apis" {
+				return jsonResponse(http.StatusOK, extensionGroupsJSON()), nil
+			}
+			return jsonResponse(http.StatusInternalServerError, `{}`), nil
+		})
+		_, err := client.Sessions.Create(context.Background(), SessionNewParams{
+			Agent: SessionAgentParam{
+				Type:         SessionAgentRefWithOverrides,
+				ID:           "agent_abc",
+				GuardrailIDs: []string{},
+			},
+			EnvironmentID: "env_123",
+		})
+		var unavailable *ExtensionNotAvailableError
+		if !errors.As(err, &unavailable) {
+			t.Fatalf("error = %v, want ExtensionNotAvailableError", err)
+		}
+		if calls := transport.Calls(); len(calls) != 1 || calls[0].Path() != "/apis" {
+			t.Fatalf("requests = %#v, want only discovery", calls)
+		}
 	})
 }
 

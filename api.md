@@ -242,6 +242,8 @@ func (c *ConnectionsClient) Validate(ctx context.Context, cfg ConnectionConfig) 
 
 ```go
 func (s DiscoveryService) Groups(ctx context.Context, opts ...option.RequestOption) (*APIGroupList, error)
+func (s DiscoveryService) PolicyGroupResources(ctx context.Context, opts ...option.RequestOption) (*APIResourceList, error)
+func (s DiscoveryService) PricingGroupResources(ctx context.Context, opts ...option.RequestOption) (*APIResourceList, error)
 ```
 
 ### EnvironmentService
@@ -287,6 +289,19 @@ func (c *FunctionsClient) Stop(ctx context.Context, name string) error
 func (c *FunctionsClient) StopInstance(ctx context.Context, name, instanceID string) error
 func (c *FunctionsClient) Trigger(ctx context.Context, name, data, dataFilePath, topic string) (string, error)
 func (c *FunctionsClient) Update(ctx context.Context, name string, cfg RegistryFunctionConfig, filePath, packageURL string, updateOptions *UpdateOptionsImpl) error
+```
+
+### GuardrailService
+
+```go
+func (s GuardrailService) Archive(ctx context.Context, guardrailID string, opts ...option.RequestOption) (*Guardrail, error)
+func (s GuardrailService) Create(ctx context.Context, params GuardrailNewParams, opts ...option.RequestOption) (*Guardrail, error)
+func (s GuardrailService) Delete(ctx context.Context, guardrailID string, opts ...option.RequestOption) (*GuardrailDeleted, error)
+func (s GuardrailService) Get(ctx context.Context, guardrailID string, opts ...option.RequestOption) (*Guardrail, error)
+func (s GuardrailService) List(ctx context.Context, params GuardrailListParams, opts ...option.RequestOption) (*pagination.PageCursor[Guardrail], error)
+func (s GuardrailService) ListAutoPaging(ctx context.Context, params GuardrailListParams, opts ...option.RequestOption) (*pagination.PageCursorAutoPager[Guardrail], error)
+func (s GuardrailService) ListTypes(ctx context.Context, opts ...option.RequestOption) (*GuardrailTypeList, error)
+func (s GuardrailService) Update(ctx context.Context, guardrailID string, params GuardrailUpdateParams, opts ...option.RequestOption) (*Guardrail, error)
 ```
 
 ### HealthClient
@@ -374,6 +389,14 @@ func (s MemoryStoreService) Update(ctx context.Context, memoryStoreID string, pa
 func (s MemoryVersionService) Get(ctx context.Context, memoryStoreID, versionID string, params MemoryVersionGetParams, opts ...option.RequestOption) (*MemoryVersion, error)
 func (s MemoryVersionService) List(ctx context.Context, memoryStoreID string, params MemoryVersionListParams, opts ...option.RequestOption) (*pagination.PageCursor[MemoryVersion], error)
 func (s MemoryVersionService) Redact(ctx context.Context, memoryStoreID, versionID string, opts ...option.RequestOption) (*MemoryVersion, error)
+```
+
+### ModelPriceService
+
+```go
+func (s ModelPriceService) Get(ctx context.Context, modelID string, params ModelPriceGetParams, opts ...option.RequestOption) (*ModelPrice, error)
+func (s ModelPriceService) List(ctx context.Context, params ModelPriceListParams, opts ...option.RequestOption) (*pagination.PageCursor[ModelPrice], error)
+func (s ModelPriceService) ListAutoPaging(ctx context.Context, params ModelPriceListParams, opts ...option.RequestOption) (*pagination.PageCursorAutoPager[ModelPrice], error)
 ```
 
 ### PackagesClient
@@ -665,6 +688,13 @@ func (t FlexibleTimestamp) MarshalJSON() ([]byte, error)
 func (t *FlexibleTimestamp) UnmarshalJSON(data []byte) error
 ```
 
+### GuardrailRule
+
+```go
+func (r GuardrailRule) MarshalJSON() ([]byte, error)
+func (r *GuardrailRule) UnmarshalJSON(data []byte) error
+```
+
 ### Memory
 
 ```go
@@ -903,6 +933,18 @@ func MemoryStoreResource(memoryStoreID string) SessionResourceParam
 - `FunctionState`
 - `FunctionStats`
 - `FunctionStatus`
+- `Guardrail`
+- `GuardrailDeleted`
+- `GuardrailListParams`
+- `GuardrailNewParams`
+- `GuardrailPhase`
+- `GuardrailRuleKind`
+- `GuardrailScope`
+- `GuardrailStateScope`
+- `GuardrailType`
+- `GuardrailTypeList`
+- `GuardrailUpdateParams`
+- `GuardrailVerdict`
 - `HTTPError`
 - `InternalServerError`
 - `KafkaConnectionConfig`
@@ -928,6 +970,9 @@ func MemoryStoreResource(memoryStoreID string) SessionResourceParam
 - `Message`
 - `ModelEffort`
 - `ModelEffortType`
+- `ModelPrice`
+- `ModelPriceGetParams`
+- `ModelPriceListParams`
 - `ModelSpeed`
 - `MultipartFile`
 - `MultipartRequest`

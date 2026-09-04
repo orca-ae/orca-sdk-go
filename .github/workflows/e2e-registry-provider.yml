@@ -96,6 +96,7 @@ jobs:
             echo "managed_repository=${ORCA_MANAGED_AGENTS_REPOSITORY}"
             echo "managed_registry_image=${ORCA_MANAGED_AGENTS_REGISTRY_IMAGE}"
             echo "managed_harness_image=${ORCA_MANAGED_AGENTS_HARNESS_IMAGE}"
+            echo "managed_image_tag=${ORCA_MANAGED_AGENTS_IMAGE_TAG}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Check out pinned Orca Agent Registry
@@ -141,15 +142,12 @@ jobs:
           swapon --show
           free -h
 
-      - uses: actions/setup-go@v7
-        with:
-          go-version: '1.26.0'
-          cache: false
-
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version-file: go.mod
+          # The pinned Registry workspace requires Go 1.26. It can also build
+          # this SDK, whose go.mod declares the older minimum version.
+          go-version: '1.26.0'
           cache: true
 
       - name: Check the e2e suite compiles before standing up a cluster
@@ -184,17 +182,19 @@ jobs:
             -o /usr/local/bin/yq
           sudo chmod 0755 /usr/local/bin/yq
 
-      - name: Resolve latest Managed Agents Registry image
+      - name: Resolve pinned Managed Agents Registry image
         id: managed-registry-image
         env:
           SOURCE_IMAGE: ${{ steps.dependencies.outputs.managed_registry_image }}
+          SOURCE_TAG: ${{ steps.dependencies.outputs.managed_image_tag }}
           IMAGE_COMPONENT: Managed Agents Registry
         run: tests/e2e/resolve-latest-image.sh
 
-      - name: Resolve latest Managed Agents Harness image
+      - name: Resolve pinned Managed Agents Harness image
         id: managed-harness-image
         env:
           SOURCE_IMAGE: ${{ steps.dependencies.outputs.managed_harness_image }}
+          SOURCE_TAG: ${{ steps.dependencies.outputs.managed_image_tag }}
           IMAGE_COMPONENT: Managed Agents Harness
         run: tests/e2e/resolve-latest-image.sh
 
@@ -207,7 +207,7 @@ jobs:
           set -euo pipefail
           [[ "${REGISTRY_REVISION}" =~ ^[0-9a-f]{40}$ ]]
           if [[ "${REGISTRY_REVISION}" != "${HARNESS_REVISION}" ]]; then
-            echo "::error::Registry and Harness latest tags come from different source revisions"
+            echo "::error::Registry and Harness tags come from different source revisions"
             exit 1
           fi
           echo "ref=${REGISTRY_REVISION}" >> "${GITHUB_OUTPUT}"

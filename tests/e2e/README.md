@@ -35,9 +35,9 @@ advertise it, rather than the test quietly skipping the cloud assertions.
 
 Needs `kind`, `kubectl`, `helm`, `yq`, and access to the private Managed Agents
 chart. `dependencies.env` pins the images and source revision; the workflows
-resolve the latest tags and verify that the registry and harness images came
-from the same commit, because a mismatched pair fails in ways that look like
-SDK bugs.
+resolve the pinned tags to immutable digests and verify that the registry and
+harness images came from the same commit, because a mismatched pair fails in
+ways that look like SDK bugs.
 
 ```bash
 export KIND_HELM_NAMESPACE=orca-sdk-e2e
