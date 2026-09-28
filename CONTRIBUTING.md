@@ -1,0 +1,105 @@
+# Contributing
+
+## Setup
+
+```bash
+./scripts/bootstrap    # Go dependencies (and Homebrew packages on macOS)
+```
+
+Requires Go 1.25 or newer — the SDK relies on `encoding/json`'s `omitzero` tag to
+distinguish an absent request field from an explicit `null`.
+
+## Day to day
+
+```bash
+./scripts/format   # gofmt -s -w .
+./scripts/lint     # gofmt check, vet, build, tests compile, examples build
+./scripts/test     # go test ./...
+```
+
+`go test ./...` must pass offline on a clean checkout. Tests that need a live
+deployment gate themselves:
+
+```bash
+# Integration — skips itself when the credential is absent; a credential
+# without ORCA_TEST_BASE_URL fails, since there is no default deployment
+ORCA_TEST_API_KEY=... ORCA_TEST_BASE_URL=... go test -run TestIntegration -v ./...
+
+# End to end — excluded from the default build entirely
+ORCA_BASE_URL=... ORCA_E2E_API_KEY=... go test -tags e2e -timeout 10m -run TestE2E ./...
+```
+
+End-to-end tests target direct Managed Agents with a workspace API key. The
+proprietary hosted provider topology is excluded; hosted-extension APIs remain
+covered by mocked tests. See [`tests/e2e/README.md`](tests/e2e/README.md).
+
+## Skipped tests are the backlog
+
+The suite ported from the TypeScript SDK specifies more than this SDK currently
+implements. Each skip names the missing capability:
+
+```bash
+go test -v ./... 2>&1 | grep -c SKIP
+```
+
+`pending_*_port_test.go` files hold spec tables giving the exact method, path,
+query, body, and response each unimplemented operation must produce.
+Implementing one means turning its table into real tests.
+
+## Conventions
+
+`AGENTS.md` is the full guide — spec provenance, service patterns, path style,
+pagination dialects, error handling, and the branding rule. Read §1 and §5 before
+adding a resource; they are where mistakes are most expensive.
+
+## Before opening a PR
+
+```bash
+./scripts/lint
+./scripts/test
+./scripts/detect-breaking-changes "$(git merge-base HEAD origin/main)"
+```
+
+`detect-breaking-changes` is what catches a change that would break a program
+built against a published version. Maintainers also build the known downstream
+consumers against a change before releasing it — see "Maintainer checks" in
+[`RELEASING.md`](RELEASING.md) — so you don't need access to them to contribute.
+
+## Commits and releases
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
+— `feat:`, `fix:`, `chore:`, `test:`, `docs:`, with `!` or a `BREAKING CHANGE:`
+footer for incompatible changes. Release Please reads them to pick the next
+version and assemble the changelog, then a maintainer merges its release PR to
+publish the tag. Go modules are served from the tag, so there is no separate
+publish step.
+
+Never edit the version in `internal/version.go` or the README install line by
+hand — the release PR rewrites both. [`RELEASING.md`](RELEASING.md) has the full
+process, including how to cut a release candidate.
+
+## CI configuration
+
+Workflows that talk to something outside this repository read what they need
+from secrets, which GitHub masks in the public run logs. That covers deployment
+endpoints as well as credentials. Uploaded artifacts are not masked, so
+these workflows upload none.
+
+The test workflows gate on those secrets — absent secrets skip the job rather
+than fail it, so a fork or a fresh clone stays green without pretending to have
+run anything. The cost is that an unconfigured job is easy to mistake for a
+passing one — a skipped job finishes in seconds, which is the tell.
+
+| Workflow | Needs | Absent |
+| --- | --- | --- |
+| `ci.yml` | nothing | — |
+| `release.yml` | `GITHUB_TOKEN` (automatic) | — |
+| `claude.yml`, `claude-code-review.yml` | `CLAUDE_CODE_OAUTH_TOKEN` (organization) | job fails — no gate |
+| `e2e-managed-agents.yml` | `SNBOT_GITHUB_TOKEN`, an organization token that can read the engine source | job skips |
+| `integration.yml` | `ORCA_TEST_API_KEY` and `ORCA_TEST_BASE_URL` | job skips |
+
+Organization secrets arrive automatically; the rest are repository secrets a
+maintainer sets under **Settings → Secrets and variables → Actions**. The
+integration gate needs both of its secrets or neither: one without the other
+fails, because a credential is only meaningful for the deployment that issued
+it.

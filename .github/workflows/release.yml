@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: Prepare release
+    runs-on: ubuntu-latest
+    # A fork has no business tagging releases in its upstream's name, and the
+    # push trigger would otherwise fire there too.
+    if: github.repository == 'orca-ae/orca-sdk-go'
+    steps:
+      # Go modules are served straight from the tag by the module proxy, so
+      # creating the tag is the entire publish step - there is no artifact to
+      # build or upload.
+      #
+      # The default token, which needs two things this repository now grants:
+      # write, to push the release branch and tag, and permission to open a pull
+      # request, which the organization policy previously withheld from Actions.
+      #
+      # Worth knowing if a tag-triggered workflow is ever added here: a tag
+      # pushed with GITHUB_TOKEN does not trigger other workflows, so such a
+      # workflow would silently never fire and would need a separate token.
+      - name: Run Release Please
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json

@@ -1,0 +1,74 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: orca-managed-agents-postgres-init
+  namespace: __NAMESPACE__
+data:
+  init.sql: |
+    CREATE DATABASE transcriptstore;
+    CREATE DATABASE filestore;
+    CREATE DATABASE memorystore;
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orca-managed-agents-postgres
+  namespace: __NAMESPACE__
+  labels:
+    app.kubernetes.io/name: orca-managed-agents-postgres
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orca-managed-agents-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orca-managed-agents-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: orca
+            - name: POSTGRES_PASSWORD
+              value: orca
+            - name: POSTGRES_DB
+              value: registry
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, orca, -d, registry]
+            initialDelaySeconds: 3
+            periodSeconds: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: init
+          configMap:
+            name: orca-managed-agents-postgres-init
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orca-managed-agents-postgres
+  namespace: __NAMESPACE__
+spec:
+  selector:
+    app.kubernetes.io/name: orca-managed-agents-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres

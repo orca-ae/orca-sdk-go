@@ -1,0 +1,271 @@
+overlay: 1.0.0
+info:
+  title: StreamNative Managed Agents deployment deviations
+  version: 0.0.1
+x-deployment-deviations-source: ../registry-service/src/test/resources/contracts/managed-agents-core-contract.json
+x-binding-id-schema-overrides:
+  - resource: agent
+    source_pattern: '^(?:agt|agent)_[A-Za-z0-9_-]+$'
+    deployment_pattern: '^agent-[A-Za-z0-9_-]+$'
+    local_example: agent-local
+    provider_example: agt_provider
+    expected_matches: 57
+    targets_sha256: e1d1ca64d16a0b097f7a5058baa4eb184699c5db4acc27fcd00a3c186a8dfe02
+    excluded_targets: []
+  - resource: session
+    source_pattern: '^(?:ses|sesn)_[A-Za-z0-9_-]+$'
+    deployment_pattern: '^session-[A-Za-z0-9_-]+$'
+    local_example: session-local
+    provider_example: ses_provider
+    expected_matches: 32
+    targets_sha256: 2a72e80f31bd02787b73e70b0796f45aa19d584bc59e83c310b3046e4ca900d4
+    excluded_targets:
+      - '#/paths/~1v1~1files/post/responses/200/content/application~1json/schema/oneOf/0/properties/scope/properties/id/pattern'
+      - '#/paths/~1v1~1files/post/responses/200/content/application~1json/schema/oneOf/1/properties/scope_id/pattern'
+      - '#/paths/~1v1~1files/get/parameters/4/schema/pattern'
+      - '#/paths/~1v1~1files/get/responses/200/content/application~1json/schema/properties/data/items/oneOf/0/properties/scope/properties/id/pattern'
+      - '#/paths/~1v1~1files/get/responses/200/content/application~1json/schema/properties/data/items/oneOf/1/properties/scope_id/pattern'
+      - '#/paths/~1v1~1files~1{id}/get/responses/200/content/application~1json/schema/oneOf/0/properties/scope/properties/id/pattern'
+      - '#/paths/~1v1~1files~1{id}/get/responses/200/content/application~1json/schema/oneOf/1/properties/scope_id/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1files/get/responses/200/content/application~1json/schema/properties/data/items/oneOf/0/properties/scope/properties/id/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1files/get/responses/200/content/application~1json/schema/properties/data/items/oneOf/1/properties/scope_id/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1files~1{file_id}/get/responses/200/content/application~1json/schema/oneOf/0/properties/scope/properties/id/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1files~1{file_id}/get/responses/200/content/application~1json/schema/oneOf/1/properties/scope_id/pattern'
+  - resource: environment
+    source_pattern: '^(?:env)_[A-Za-z0-9_-]+$'
+    deployment_pattern: '^env-[A-Za-z0-9_-]+$'
+    local_example: env-local
+    provider_example: env_provider
+    expected_matches: 25
+    targets_sha256: 5ee7ce4b71eb1fb09c7842008bafc8273e07c46d1e27e837857ba08c094ea353
+    excluded_targets: []
+  - resource: file
+    source_pattern: '^(?:file)_[A-Za-z0-9_-]+$'
+    deployment_pattern: '^file-[A-Za-z0-9_-]+$'
+    local_example: file-local
+    provider_example: file_provider
+    expected_matches: 29
+    targets_sha256: 74b5a8077b8e9e2bcc68f9756bba31692b851f02670eccfc4967f0c7ca5d0c4f
+    excluded_targets:
+      - '#/paths/~1v1~1sessions~1{id}~1events/post/requestBody/content/application~1json/schema/properties/events/items/oneOf/0/properties/content/items/oneOf/1/properties/source/oneOf/2/properties/file_id/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1events/post/requestBody/content/application~1json/schema/properties/events/items/oneOf/0/properties/content/items/oneOf/2/properties/source/oneOf/3/properties/file_id/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1events/post/requestBody/content/application~1json/schema/properties/events/items/oneOf/3/properties/content/items/oneOf/1/properties/source/oneOf/2/properties/file_id/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1events/post/requestBody/content/application~1json/schema/properties/events/items/oneOf/3/properties/content/items/oneOf/2/properties/source/oneOf/3/properties/file_id/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1events/post/requestBody/content/application~1json/schema/properties/events/items/oneOf/4/properties/rubric/oneOf/1/properties/file_id/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1events/post/requestBody/content/application~1json/schema/properties/events/items/oneOf/5/properties/content/items/oneOf/1/properties/source/oneOf/2/properties/file_id/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1events/post/requestBody/content/application~1json/schema/properties/events/items/oneOf/5/properties/content/items/oneOf/2/properties/source/oneOf/3/properties/file_id/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1files/get/parameters/3/schema/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1files/get/parameters/4/schema/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1files/get/responses/200/content/application~1json/schema/properties/data/items/oneOf/0/properties/id/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1files/get/responses/200/content/application~1json/schema/properties/data/items/oneOf/1/properties/id/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1files/get/responses/200/content/application~1json/schema/properties/first_id/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1files/get/responses/200/content/application~1json/schema/properties/last_id/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1files~1{file_id}/get/parameters/1/schema/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1files~1{file_id}/get/responses/200/content/application~1json/schema/oneOf/0/properties/id/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1files~1{file_id}/get/responses/200/content/application~1json/schema/oneOf/1/properties/id/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1files~1{file_id}/delete/parameters/1/schema/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1files~1{file_id}/delete/responses/200/content/application~1json/schema/properties/id/pattern'
+      - '#/paths/~1v1~1sessions~1{id}~1files~1{file_id}~1content/get/parameters/1/schema/pattern'
+  - resource: skill
+    source_pattern: '^(?:skill)_[A-Za-z0-9_-]+$'
+    deployment_pattern: '^skill-[A-Za-z0-9_-]+$'
+    local_example: skill-local
+    provider_example: skill_provider
+    expected_matches: 38
+    targets_sha256: 588d74114d647845b16009c44b8768c23a0346ad50f76a31bdad9e938c214b2c
+    excluded_targets: []
+  - resource: memory_store
+    source_pattern: '^(?:mems)_[A-Za-z0-9_-]+$'
+    deployment_pattern: '^memstore-[A-Za-z0-9_-]+$'
+    local_example: memstore-local
+    provider_example: mems_provider
+    expected_matches: 30
+    targets_sha256: cf6a555c576b3901d7dbe8abb7039113ed2da1406a7d6d8b3569734748c26fcd
+    excluded_targets:
+      - '#/paths/~1v1~1memory_stores~1{id}~1memories/post/responses/200/content/application~1json/schema/properties/memory_store_id/pattern'
+      - '#/paths/~1v1~1memory_stores~1{id}~1memories/get/responses/200/content/application~1json/schema/properties/data/items/oneOf/0/properties/memory_store_id/pattern'
+      - '#/paths/~1v1~1memory_stores~1{id}~1memories~1{memory_id}/get/responses/200/content/application~1json/schema/properties/memory_store_id/pattern'
+      - '#/paths/~1v1~1memory_stores~1{id}~1memories~1{memory_id}/post/responses/200/content/application~1json/schema/properties/memory_store_id/pattern'
+      - '#/paths/~1v1~1memory_stores~1{id}~1memory_versions/get/responses/200/content/application~1json/schema/properties/data/items/properties/memory_store_id/pattern'
+      - '#/paths/~1v1~1memory_stores~1{id}~1memory_versions~1{version_id}/get/responses/200/content/application~1json/schema/properties/memory_store_id/pattern'
+      - '#/paths/~1v1~1memory_stores~1{id}~1memory_versions~1{version_id}~1redact/post/responses/200/content/application~1json/schema/properties/memory_store_id/pattern'
+      - '#/paths/~1v1~1sessions/get/parameters/11/schema/pattern'
+  - resource: vault
+    source_pattern: '^(?:vlt)_[A-Za-z0-9_-]+$'
+    deployment_pattern: '^vault-[A-Za-z0-9_-]+$'
+    local_example: vault-local
+    provider_example: vlt_provider
+    expected_matches: 33
+    targets_sha256: c517f5af9d2b3f713ea955c24c709743e60c5476d0ee318003e53568de4ddcaa
+    excluded_targets:
+      - '#/paths/~1v1~1vaults~1{vault_id}~1credentials/get/responses/200/content/application~1json/schema/properties/data/items/properties/vault_id/pattern'
+      - '#/paths/~1v1~1vaults~1{vault_id}~1credentials/post/responses/200/content/application~1json/schema/properties/vault_id/pattern'
+      - '#/paths/~1v1~1vaults~1{vault_id}~1credentials~1{credential_id}/get/responses/200/content/application~1json/schema/properties/vault_id/pattern'
+      - '#/paths/~1v1~1vaults~1{vault_id}~1credentials~1{credential_id}/post/responses/200/content/application~1json/schema/properties/vault_id/pattern'
+      - '#/paths/~1v1~1vaults~1{vault_id}~1credentials~1{credential_id}~1archive/post/responses/200/content/application~1json/schema/properties/vault_id/pattern'
+      - '#/paths/~1v1~1vaults~1{vault_id}~1credentials~1{credential_id}~1mcp_oauth_validate/post/responses/200/content/application~1json/schema/properties/vault_id/pattern'
+  - resource: trigger
+    source_pattern: '^(?:trg)_[A-Za-z0-9_-]+$'
+    deployment_pattern: '^trigger-[A-Za-z0-9_-]+$'
+    local_example: trigger-local
+    provider_example: trg_provider
+    expected_matches: 13
+    targets_sha256: 04ff9032901e45eaead514c5bb4f99c269ff6b6185e1fa9128187c6b9621dbba
+    excluded_targets: []
+x-deployment-query-parameter-extensions:
+  - method: GET
+    path: /v1/agents
+    name: provider
+    description: Filter by sandbox provider
+    schema:
+      type: string
+  - method: GET
+    path: /v1/environments
+    name: provider
+    description: Filter by sandbox provider
+    schema:
+      type: string
+  - method: GET
+    path: /v1/files
+    name: provider
+    description: Filter by sandbox provider
+    schema:
+      type: string
+  - method: GET
+    path: /v1/memory_stores
+    name: provider
+    description: Filter by sandbox provider
+    schema:
+      type: string
+  - method: GET
+    path: /v1/sessions
+    name: provider
+    description: Filter by sandbox provider
+    schema:
+      type: string
+  - method: GET
+    path: /v1/skills
+    name: provider
+    description: Filter by sandbox provider
+    schema:
+      type: string
+  - method: GET
+    path: /v1/vaults
+    name: provider
+    description: Filter by sandbox provider
+    schema:
+      type: string
+x-deployment-trigger-schema-extension:
+  session_modes: [SESSION_PER_EVENT, SESSION_PER_TOPIC, SESSION_PER_KEY, SHARED]
+  cron_session_modes: [SESSION_PER_EVENT, SHARED]
+  source_types: [cron, kafka, pulsar]
+  source_properties:
+    connection:
+      type: string
+      minLength: 1
+    topics:
+      type: array
+      minItems: 1
+      items:
+        type: string
+        minLength: 1
+    topic_pattern:
+      type: string
+      minLength: 1
+    subscription_name:
+      type: string
+    type_class_name:
+      type: string
+    type_class_definition:
+      type: string
+    schema_type:
+      type: string
+    consumer_additional_config:
+      type: object
+      additionalProperties: true
+    input_schema_configs:
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          subject:
+            type: string
+            nullable: true
+          type:
+            type: string
+            nullable: true
+          version:
+            type: integer
+            nullable: true
+  source_variants:
+    cron:
+      fields: [type, schedule, timezone, payload]
+      required: [type, schedule, payload]
+    kafka:
+      fields: [type, connection, topics, topic_pattern, subscription_name, type_class_name,
+               type_class_definition, schema_type, consumer_additional_config, input_schema_configs]
+      required: [type, connection]
+      topic_selector: true
+    pulsar:
+      fields: [type, connection, topics, topic_pattern, subscription_name, type_class_name,
+               type_class_definition, schema_type]
+      required: [type, connection]
+      topic_selector: true
+  minimum_replicas: 1
+  expected_matches: 8
+  targets_sha256: e5d0e8e8d771b23fc545dac3e380084c96527114582c7e21a199c12ca341d329
+actions:
+  - target: $.paths['/v1/git-creds'].post
+    remove: true
+    x-deployment-deviation: POST /v1/git-creds
+  - target: $.paths['/v1/environments'].post.requestBody.content.application/json.schema.properties
+    remove_properties: [packages, networking, image, target]
+    x-deployment-deviation: POST /v1/environments
+  - target: $.paths['/v1/environments/{id}'].post.requestBody.content.application/json.schema.properties
+    remove_properties: [packages, networking, image, target]
+    x-deployment-deviation: POST /v1/environments/{id}
+  - target: $.paths['/v1/sessions'].get.parameters[?(@.name == 'agent_version' || @.name == 'created_at[gt]' || @.name == 'created_at[gte]' || @.name == 'created_at[lt]' || @.name == 'created_at[lte]' || @.name == 'deployment_id' || @.name == 'memory_store_id' || @.name == 'order' || @.name == 'statuses')]
+    remove: true
+    x-deployment-deviation: GET /v1/sessions
+  - target: $.paths['/v1/agents'].get.parameters[?(@.name == 'created_at[gte]' || @.name == 'created_at[lte]')]
+    remove: true
+    x-deployment-deviation: GET /v1/agents
+  - target: $.paths['/v1/files'].get.parameters[?(@.name == 'scope_id')]
+    remove: true
+    x-deployment-deviation: GET /v1/files
+  - target: $.paths['/v1/memory_stores'].get.parameters[?(@.name == 'created_at[gte]' || @.name == 'created_at[lte]')]
+    remove: true
+    x-deployment-deviation: GET /v1/memory_stores
+  - target: $.paths['/v1/memory_stores/{id}/memory_versions'].get.parameters[?(@.name == 'session_id')]
+    remove: true
+    x-deployment-deviation: GET /v1/memory_stores/{id}/memory_versions
+  - target: $.paths['/v1/skills'].get.parameters[?(@.name == 'source')]
+    remove: true
+    x-deployment-deviation: GET /v1/skills
+  - target: $.paths['/v1/triggers'].get.parameters[?(@.name == 'include_archived')]
+    remove: true
+    x-deployment-deviation: GET /v1/triggers
+  - target: $.paths['/v1/triggers'].post.parameters[?(@.name == 'idempotency-key')]
+    remove: true
+    x-deployment-deviation: POST /v1/triggers
+  - target: $.paths['/v1/triggers/{id}'].post.parameters[?(@.name == 'idempotency-key')]
+    remove: true
+    x-deployment-deviation: POST /v1/triggers/{id}
+  - target: $.paths['/v1/triggers/{id}'].delete.parameters[?(@.name == 'idempotency-key')]
+    remove: true
+    x-deployment-deviation: DELETE /v1/triggers/{id}
+  - target: $.paths['/v1/triggers/{id}/pause'].post.parameters[?(@.name == 'idempotency-key')]
+    remove: true
+    x-deployment-deviation: POST /v1/triggers/{id}/pause
+  - target: $.paths['/v1/triggers/{id}/unpause'].post.parameters[?(@.name == 'idempotency-key')]
+    remove: true
+    x-deployment-deviation: POST /v1/triggers/{id}/unpause
+  - target: $.paths['/v1/agents/{id}'].delete.responses
+    remove: true
+    x-deployment-deviation: DELETE /v1/agents/{id}
+  - target: $.paths['/v1/agents/{id}'].delete
+    update:
+      responses:
+        '400':
+          description: Agent deletion is not supported
+    x-deployment-deviation: DELETE /v1/agents/{id}

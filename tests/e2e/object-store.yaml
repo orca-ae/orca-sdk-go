@@ -1,0 +1,104 @@
+# S3-compatible object store for direct E2E. `__NAMESPACE__` is
+# replaced before this manifest is applied.
+#
+# The server is RustFS: MinIO's images stopped allowing anonymous pulls, from
+# quay.io and Docker Hub alike. The objects keep their `orca-managed-agents-minio`
+# names, because the Helm values address the store by that Service name.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orca-managed-agents-minio
+  namespace: __NAMESPACE__
+  labels:
+    app.kubernetes.io/name: orca-managed-agents-minio
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orca-managed-agents-minio
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: orca-managed-agents-minio
+    spec:
+      securityContext:
+        fsGroup: 10001
+      containers:
+        # The image runs as the named user `rustfs`, uid 10001. runAsNonRoot can
+        # only verify a numeric uid, so set it explicitly.
+        - name: rustfs
+          image: rustfs/rustfs:1.0.0
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+          ports:
+            - name: s3
+              containerPort: 9000
+          env:
+            - name: RUSTFS_ACCESS_KEY
+              value: minioadmin
+            - name: RUSTFS_SECRET_KEY
+              value: minioadmin
+            # RustFS logs only to files under /logs unless told to mirror them.
+            - name: RUSTFS_OBS_LOG_STDOUT_ENABLED
+              value: 'true'
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: s3
+            periodSeconds: 3
+            failureThreshold: 30
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orca-managed-agents-minio
+  namespace: __NAMESPACE__
+spec:
+  selector:
+    app.kubernetes.io/name: orca-managed-agents-minio
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: s3
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: orca-managed-agents-minio-init
+  namespace: __NAMESPACE__
+spec:
+  backoffLimit: 12
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        # RustFS's own client. It reads the `local` alias from RC_HOST_local,
+        # and retries until the store answers.
+        - name: rc
+          image: rustfs/rc:v0.1.36
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: RC_HOST_local
+              value: http://minioadmin:minioadmin@orca-managed-agents-minio:9000
+          command:
+            - sh
+            - -ec
+            - |
+              until rc mb --ignore-existing local/orca-files; do
+                sleep 2
+              done
