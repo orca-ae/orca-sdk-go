@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Copyright The Orca Authors
+# SPDX-License-Identifier: Apache-2.0
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+echo "==> Checking gofmt"
+unformatted="$(gofmt -s -l . )"
+if [ -n "$unformatted" ]; then
+	echo "The following files are not formatted. Run ./scripts/format" >&2
+	echo "$unformatted" >&2
+	exit 1
+fi
+
+# Every Go source and shell script says which license it is under. Tracked
+# files only, so checkouts in the local e2e scratch space are not judged.
+echo "==> Checking license headers"
+missing=()
+while IFS= read -r file; do
+	header="$(head -n 5 "$file")"
+	if ! grep -qE '^(//|#) Copyright The Orca Authors$' <<<"$header" ||
+		! grep -qE '^(//|#) SPDX-License-Identifier: Apache-2\.0$' <<<"$header"; then
+		missing+=("$file")
+	fi
+done < <(git ls-files '*.go' 'scripts/*' 'tests/e2e/*.sh')
+if [ "${#missing[@]}" -gt 0 ]; then
+	echo "These files lack the license header:" >&2
+	printf '  %s\n' "${missing[@]}" >&2
+	echo "Add these two lines at the top (after the #! line in scripts), in the" >&2
+	echo "file's comment syntax:" >&2
+	echo "  Copyright The Orca Authors" >&2
+	echo "  SPDX-License-Identifier: Apache-2.0" >&2
+	exit 1
+fi
+
+echo "==> Running go vet"
+go vet ./...
+
+echo "==> Running Go build"
+go build ./...
+
+echo "==> Checking tests compile"
+go test -run=^$ ./...
+
+# The examples are a separate module that replaces this one with the working
+# tree, so building them proves the public API still supports the documented
+# usage. An example that stops compiling is an API break with a worked example
+# attached.
+echo "==> Building examples"
+(cd examples && go build ./...)
+
+# The e2e harness is shell, and a syntax error in it only surfaces an hour into
+# a cluster build. Parse it here instead.
+echo "==> Checking shell scripts parse"
+for script in scripts/* tests/e2e/*.sh; do
+	[ -f "$script" ] || continue
+	head -1 "$script" | grep -q '^#!.*sh' || continue
+	bash -n "$script"
+done
+
+# The e2e suite is excluded from the default build by its tag, so nothing else
+# here would notice it failing to compile.
+echo "==> Checking the e2e suite compiles"
+go vet -tags e2e ./...

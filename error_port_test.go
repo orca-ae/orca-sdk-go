@@ -1,0 +1,686 @@
+// Copyright The Orca Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package orca
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"testing"
+	"time"
+)
+
+// Ported from the Orca TypeScript SDK test suite: errors.
+//
+// The TypeScript SDK maps each failing status onto its own error class
+// (BadRequestError, AuthenticationError, NotFoundError, RateLimitError, …)
+// descending from a shared OrcaError, and asserts the mapping with
+// `instanceof`. This client has a single error type — *HTTPError, carrying
+// Method, URL, StatusCode and Body — so the mapping the TS suite specifies
+// collapses to "the status is reported faithfully and the caller switches on
+// it".
+//
+// What that costs is recorded here rather than papered over: the tests that
+// need a class hierarchy, a request ID, or response headers are written as the
+// TS suite specifies them and skipped with a "not implemented:" reason.
+
+// errorStatuses are the statuses tests/core/error.test.ts pins to a specific
+// error class, plus the two it uses for the fall-through case.
+var errorStatuses = []int{
+	http.StatusBadRequest,          // 400 → BadRequestError
+	http.StatusUnauthorized,        // 401 → AuthenticationError
+	http.StatusForbidden,           // 403 → PermissionDeniedError
+	http.StatusNotFound,            // 404 → NotFoundError
+	http.StatusConflict,            // 409 → ConflictError
+	http.StatusUnprocessableEntity, // 422 → UnprocessableEntityError
+	http.StatusTooManyRequests,     // 429 → RateLimitError
+	http.StatusInternalServerError, // 500 → InternalServerError
+	http.StatusServiceUnavailable,  // 503 → InternalServerError
+	599,                            // 599 → InternalServerError (any 5xx)
+	http.StatusTeapot,              // 418 → plain APIError (unmapped status)
+}
+
+// -----------------------------------------------------------------------
+// 1. Status classification (the analogue of APIError.generate)
+// -----------------------------------------------------------------------
+
+func TestHTTPErrorStatusClassification(t *testing.T) {
+	t.Parallel()
+
+	for _, status := range errorStatuses {
+		t.Run(fmt.Sprintf("%d", status), func(t *testing.T) {
+			t.Parallel()
+
+			body := fmt.Sprintf(`{"error":{"status":%d}}`, status)
+			client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+				return jsonResponse(status, body), nil
+			})
+
+			var out map[string]any
+			err := client.GetJSON(context.Background(), "/v1/agents/a1", &out)
+
+			var httpErr *HTTPError
+			if !errors.As(err, &httpErr) {
+				t.Fatalf("GetJSON() error = %v (%T), want *HTTPError", err, err)
+			}
+			if httpErr.StatusCode != status {
+				t.Errorf("StatusCode = %d, want %d", httpErr.StatusCode, status)
+			}
+			if httpErr.Body != body {
+				t.Errorf("Body = %q, want %q", httpErr.Body, body)
+			}
+		})
+	}
+
+	t.Run("a 3xx without a Location header is an error, not a redirect", func(t *testing.T) {
+		t.Parallel()
+
+		// Go-specific and worth pinning: only 2xx is success here, so a 302
+		// the transport cannot follow surfaces as an *HTTPError rather than
+		// being silently returned as a body.
+		client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+			return jsonResponse(http.StatusFound, `{}`), nil
+		})
+
+		var out map[string]any
+		err := client.GetJSON(context.Background(), "/v1/agents", &out)
+
+		var httpErr *HTTPError
+		if !errors.As(err, &httpErr) {
+			t.Fatalf("GetJSON() error = %v, want *HTTPError", err)
+		}
+		if httpErr.StatusCode != http.StatusFound {
+			t.Errorf("StatusCode = %d, want %d", httpErr.StatusCode, http.StatusFound)
+		}
+	})
+
+	t.Run("maps each status to its own error class", func(t *testing.T) {
+		t.Parallel()
+
+		// Each status gets its own type so a caller can react to the one it
+		// cares about without reading a status code back out of a generic
+		// error. Every status is checked against every matcher, so a type that
+		// matched two statuses - or the wrong one - fails here.
+		matchers := []struct {
+			status  int
+			name    string
+			matches func(error) bool
+		}{
+			{http.StatusBadRequest, "*BadRequestError", func(err error) bool {
+				var e *BadRequestError
+				return errors.As(err, &e)
+			}},
+			{http.StatusUnauthorized, "*AuthenticationError", func(err error) bool {
+				var e *AuthenticationError
+				return errors.As(err, &e)
+			}},
+			{http.StatusForbidden, "*PermissionDeniedError", func(err error) bool {
+				var e *PermissionDeniedError
+				return errors.As(err, &e)
+			}},
+			{http.StatusNotFound, "*NotFoundError", func(err error) bool {
+				var e *NotFoundError
+				return errors.As(err, &e)
+			}},
+			{http.StatusConflict, "*ConflictError", func(err error) bool {
+				var e *ConflictError
+				return errors.As(err, &e)
+			}},
+			{http.StatusUnprocessableEntity, "*UnprocessableEntityError", func(err error) bool {
+				var e *UnprocessableEntityError
+				return errors.As(err, &e)
+			}},
+			{http.StatusTooManyRequests, "*RateLimitError", func(err error) bool {
+				var e *RateLimitError
+				return errors.As(err, &e)
+			}},
+		}
+
+		for _, status := range errorStatuses {
+			t.Run(fmt.Sprintf("%d", status), func(t *testing.T) {
+				t.Parallel()
+
+				client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+					return jsonResponse(status, `{}`), nil
+				})
+				var out map[string]any
+				err := client.GetJSON(context.Background(), "/v1/agents", &out)
+
+				for _, matcher := range matchers {
+					want := matcher.status == status
+					if got := matcher.matches(err); got != want {
+						t.Errorf("errors.As(%s) = %v, want %v for status %d",
+							matcher.name, got, want, status)
+					}
+				}
+
+				// Any 5xx is an InternalServerError; 418 is mapped by nothing
+				// and stays a bare *APIError.
+				var serverErr *InternalServerError
+				if got, want := errors.As(err, &serverErr), status >= 500; got != want {
+					t.Errorf("errors.As(*InternalServerError) = %v, want %v for status %d",
+						got, want, status)
+				}
+
+				// Whichever type it is, the general one is still reachable, so
+				// a caller that only wants the status code never has to
+				// enumerate the specific types.
+				var apiErr *APIError
+				if !errors.As(err, &apiErr) {
+					t.Fatalf("errors.As(*APIError) = false for status %d (error %T)", status, err)
+				}
+				if apiErr.StatusCode != status {
+					t.Errorf("StatusCode = %d, want %d", apiErr.StatusCode, status)
+				}
+			})
+		}
+	})
+
+	t.Run("exposes a shared error root the whole SDK descends from", func(t *testing.T) {
+		t.Parallel()
+
+		// The point of the root is that a caller can tell "the SDK failed"
+		// from "something else in my program failed" without enumerating
+		// types. That only holds if failures which never reach the network
+		// satisfy it too, so this covers all the origins.
+		tests := []struct {
+			name string
+			call func() error
+		}{
+			{
+				name: "argument validation, before any request",
+				call: func() error {
+					_, err := NewClientWithWarningWriter("", "token", nil, io.Discard)
+					return err
+				},
+			},
+			{
+				name: "a path the client refuses to resolve",
+				call: func() error {
+					client, _ := newRecordingClient(t, nil)
+					var out map[string]any
+					return client.GetJSON(context.Background(), "", &out)
+				},
+			},
+			{
+				name: "a failing status",
+				call: func() error {
+					client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+						return jsonResponse(http.StatusInternalServerError, `{}`), nil
+					})
+					var out map[string]any
+					return client.GetJSON(context.Background(), "/v1/agents", &out)
+				},
+			},
+			{
+				name: "a body that will not decode",
+				call: func() error {
+					client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+						return jsonResponse(http.StatusOK, "not json"), nil
+					})
+					var out map[string]any
+					return client.GetJSON(context.Background(), "/v1/agents", &out)
+				},
+			},
+			{
+				name: "a transport that never answers",
+				call: func() error {
+					client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+						return nil, errors.New("dial tcp: connection refused")
+					})
+					var out map[string]any
+					return client.GetJSON(context.Background(), "/v1/agents", &out)
+				},
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				err := tc.call()
+				if err == nil {
+					t.Fatal("expected a failure, got nil")
+				}
+				var orcaErr Error
+				if !errors.As(err, &orcaErr) {
+					t.Errorf("errors.As(orca.Error) = false for %T (%v)", err, err)
+				}
+			})
+		}
+	})
+}
+
+// -----------------------------------------------------------------------
+// 2. Error identity across the request surface
+// -----------------------------------------------------------------------
+
+// The TS class hierarchy is uniform no matter which resource method failed.
+// The equivalent claim here is that every entry point produces the same error
+// type with Method and URL filled in — including the streaming and multipart
+// paths, which build their responses on separate code paths from doJSON.
+func TestHTTPErrorCarriesMethodAndURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		call       func(*Client) error
+		wantMethod string
+		wantPath   string
+	}{
+		{
+			name: "GetJSON",
+			call: func(c *Client) error {
+				var out map[string]any
+				return c.GetJSON(context.Background(), "/v1/agents", &out)
+			},
+			wantMethod: http.MethodGet,
+			wantPath:   "/v1/agents",
+		},
+		{
+			name: "PostJSON",
+			call: func(c *Client) error {
+				var out map[string]any
+				return c.PostJSON(context.Background(), "/v1/agents", map[string]string{"name": "a"}, &out)
+			},
+			wantMethod: http.MethodPost,
+			wantPath:   "/v1/agents",
+		},
+		{
+			name: "PutJSON",
+			call: func(c *Client) error {
+				var out map[string]any
+				return c.PutJSON(context.Background(), "/v1/agents/a1", map[string]string{"name": "a"}, &out)
+			},
+			wantMethod: http.MethodPut,
+			wantPath:   "/v1/agents/a1",
+		},
+		{
+			name: "PatchJSON",
+			call: func(c *Client) error {
+				var out map[string]any
+				return c.PatchJSON(context.Background(), "/v1/agents/a1", map[string]string{"name": "a"}, &out)
+			},
+			wantMethod: http.MethodPatch,
+			wantPath:   "/v1/agents/a1",
+		},
+		{
+			name:       "Delete",
+			call:       func(c *Client) error { return c.Delete(context.Background(), "/v1/agents/a1") },
+			wantMethod: http.MethodDelete,
+			wantPath:   "/v1/agents/a1",
+		},
+		{
+			name: "GetStream",
+			call: func(c *Client) error {
+				return c.GetStream(context.Background(), "/v1/sessions/s1/events/stream", "text/event-stream",
+					func(io.Reader) error { return nil })
+			},
+			wantMethod: http.MethodGet,
+			wantPath:   "/v1/sessions/s1/events/stream",
+		},
+		{
+			name: "PostMultipart",
+			call: func(c *Client) error {
+				return c.PostMultipart(context.Background(), "/v1/files", MultipartRequest{
+					ConfigField: "config",
+					Config:      map[string]string{"name": "a"},
+				})
+			},
+			wantMethod: http.MethodPost,
+			wantPath:   "/v1/files",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+				return jsonResponse(http.StatusForbidden, `{"error":"forbidden"}`), nil
+			})
+
+			err := tc.call(client)
+
+			var httpErr *HTTPError
+			if !errors.As(err, &httpErr) {
+				t.Fatalf("%s() error = %v (%T), want *HTTPError", tc.name, err, err)
+			}
+			if httpErr.StatusCode != http.StatusForbidden {
+				t.Errorf("StatusCode = %d, want %d", httpErr.StatusCode, http.StatusForbidden)
+			}
+			if httpErr.Method != tc.wantMethod {
+				t.Errorf("Method = %q, want %q", httpErr.Method, tc.wantMethod)
+			}
+			if want := testBaseURL + tc.wantPath; httpErr.URL != want {
+				t.Errorf("URL = %q, want %q", httpErr.URL, want)
+			}
+		})
+	}
+}
+
+// -----------------------------------------------------------------------
+// 3. Error message rendering
+// -----------------------------------------------------------------------
+
+func TestHTTPErrorMessage(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  *HTTPError
+		want string
+	}{
+		{
+			name: "includes the server payload when there is one",
+			err: &HTTPError{
+				Method:     http.MethodGet,
+				URL:        testBaseURL + "/v1/agents/a1",
+				StatusCode: http.StatusNotFound,
+				Body:       `{"error":"not found"}`,
+			},
+			want: `GET https://api.example.test/v1/agents/a1 returned status 404: {"error":"not found"}`,
+		},
+		{
+			name: "omits the trailing separator when the body is empty",
+			err: &HTTPError{
+				Method:     http.MethodDelete,
+				URL:        testBaseURL + "/v1/agents/a1",
+				StatusCode: http.StatusNotFound,
+			},
+			want: "DELETE https://api.example.test/v1/agents/a1 returned status 404",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := tc.err.Error(); got != tc.want {
+				t.Errorf("Error() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+
+	t.Run("surrounding whitespace is trimmed from the captured body", func(t *testing.T) {
+		t.Parallel()
+
+		client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+			return jsonResponse(http.StatusBadRequest, "\n  bad request  \n"), nil
+		})
+
+		var out map[string]any
+		err := client.GetJSON(context.Background(), "/v1/agents", &out)
+
+		var httpErr *HTTPError
+		if !errors.As(err, &httpErr) {
+			t.Fatalf("GetJSON() error = %v, want *HTTPError", err)
+		}
+		if httpErr.Body != "bad request" {
+			t.Errorf("Body = %q, want %q", httpErr.Body, "bad request")
+		}
+	})
+}
+
+// -----------------------------------------------------------------------
+// 4. Failure taxonomy — the analogue of the TS `instanceof` chain
+// -----------------------------------------------------------------------
+
+// A caller has to tell four kinds of failure apart: the server answered with a
+// failing status; the request never got a response; the caller cancelled or
+// ran out of time; the response arrived but could not be decoded. The TS SDK
+// draws those lines with error classes. Here they are drawn by whether the
+// error is an *HTTPError and by what errors.Is finds underneath, so that is
+// what this pins.
+func TestErrorTaxonomy(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		respond     responder
+		ctx         func() (context.Context, context.CancelFunc)
+		wantHTTP    bool
+		wantCause   error
+		wantMessage string
+	}{
+		{
+			name: "a failing status is an *HTTPError",
+			respond: func(*http.Request) (*http.Response, error) {
+				return jsonResponse(http.StatusInternalServerError, `{"error":"boom"}`), nil
+			},
+			wantHTTP: true,
+		},
+		{
+			name:        "a transport failure is not, and wraps its cause",
+			respond:     func(*http.Request) (*http.Response, error) { return nil, errTransportFailure },
+			wantCause:   errTransportFailure,
+			wantMessage: "failed to execute",
+		},
+		{
+			name:        "a cancellation wraps context.Canceled",
+			respond:     func(*http.Request) (*http.Response, error) { return nil, context.Canceled },
+			wantCause:   context.Canceled,
+			wantMessage: "failed to execute",
+		},
+		{
+			name:        "a timeout wraps context.DeadlineExceeded",
+			respond:     func(*http.Request) (*http.Response, error) { return nil, context.DeadlineExceeded },
+			wantCause:   context.DeadlineExceeded,
+			wantMessage: "failed to execute",
+		},
+		{
+			name: "an undecodable success body is a decode failure",
+			respond: func(*http.Request) (*http.Response, error) {
+				return jsonResponse(http.StatusOK, "not json"), nil
+			},
+			wantMessage: "failed to decode",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			client, _ := newRecordingClient(t, tc.respond)
+
+			var out map[string]any
+			err := client.GetJSON(context.Background(), "/v1/agents", &out)
+			if err == nil {
+				t.Fatal("GetJSON() error = nil, want a failure")
+			}
+
+			var httpErr *HTTPError
+			if got := errors.As(err, &httpErr); got != tc.wantHTTP {
+				t.Errorf("errors.As(*HTTPError) = %v, want %v (error was %v)", got, tc.wantHTTP, err)
+			}
+			if tc.wantCause != nil && !errors.Is(err, tc.wantCause) {
+				t.Errorf("error = %v, want it to wrap %v", err, tc.wantCause)
+			}
+			if tc.wantMessage != "" && !strings.Contains(err.Error(), tc.wantMessage) {
+				t.Errorf("error = %q, want it to contain %q", err, tc.wantMessage)
+			}
+		})
+	}
+
+	t.Run("distinguishes an aborted request from a timed-out one by type", func(t *testing.T) {
+		t.Parallel()
+
+		// http.Client reports a cancelled context, an exceeded deadline, and a
+		// refused connection through the same error value, so a caller cannot
+		// tell "I cancelled this" from "the server is too slow" from "the
+		// server is unreachable" without help. Only the middle case argues for
+		// a longer deadline and only the last argues for a retry, so the SDK
+		// classifies them.
+		tests := []struct {
+			name      string
+			ctx       func(t *testing.T) context.Context
+			transport error
+			matches   func(error) bool
+			wantType  string
+		}{
+			{
+				name: "cancelled by the caller",
+				ctx: func(t *testing.T) context.Context {
+					ctx, cancel := context.WithCancel(context.Background())
+					cancel()
+					return ctx
+				},
+				transport: context.Canceled,
+				matches: func(err error) bool {
+					var e *UserAbortError
+					return errors.As(err, &e)
+				},
+				wantType: "*UserAbortError",
+			},
+			{
+				name: "deadline exceeded",
+				ctx: func(t *testing.T) context.Context {
+					ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+					t.Cleanup(cancel)
+					time.Sleep(time.Millisecond)
+					return ctx
+				},
+				transport: context.DeadlineExceeded,
+				matches: func(err error) bool {
+					var e *TimeoutError
+					return errors.As(err, &e)
+				},
+				wantType: "*TimeoutError",
+			},
+			{
+				name:      "connection refused",
+				ctx:       func(*testing.T) context.Context { return context.Background() },
+				transport: errors.New("dial tcp 127.0.0.1:443: connect: connection refused"),
+				matches: func(err error) bool {
+					var e *ConnectionError
+					return errors.As(err, &e)
+				},
+				wantType: "*ConnectionError",
+			},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+					return nil, tc.transport
+				})
+
+				var out map[string]any
+				err := client.GetJSON(tc.ctx(t), "/v1/agents", &out)
+				if err == nil {
+					t.Fatal("GetJSON() error = nil, want a failure")
+				}
+				if !tc.matches(err) {
+					t.Errorf("error = %T (%v), want %s", err, err, tc.wantType)
+				}
+
+				// No response ever arrived, so there is no status to report.
+				var apiErr *APIError
+				if errors.As(err, &apiErr) {
+					t.Errorf("errors.As(*APIError) = true for %T, want false", err)
+				}
+			})
+		}
+	})
+}
+
+// -----------------------------------------------------------------------
+// 5. Request correlation
+// -----------------------------------------------------------------------
+
+func TestHTTPErrorRequestID(t *testing.T) {
+	t.Parallel()
+
+	t.Run("reads requestID from the request-id response header", func(t *testing.T) {
+		t.Parallel()
+
+		// The request ID is what ties a failure to the server-side logs, so it
+		// has to survive onto the error rather than being dropped with the
+		// response. Deployments differ on the header name.
+		tests := []struct {
+			name   string
+			header string
+			want   string
+		}{
+			{name: "request-id", header: "Request-Id", want: "req_abc123"},
+			{name: "x-request-id", header: "X-Request-Id", want: "req_def456"},
+			{name: "x-correlation-id", header: "X-Correlation-Id", want: "corr_789"},
+		}
+
+		for _, tc := range tests {
+			t.Run(tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+					res := jsonResponse(http.StatusInternalServerError, `{}`)
+					res.Header.Set(tc.header, tc.want)
+					return res, nil
+				})
+
+				var out map[string]any
+				err := client.GetJSON(context.Background(), "/v1/agents", &out)
+
+				var apiErr *APIError
+				if !errors.As(err, &apiErr) {
+					t.Fatalf("GetJSON() error = %T, want *APIError", err)
+				}
+				if apiErr.RequestID != tc.want {
+					t.Errorf("RequestID = %q, want %q", apiErr.RequestID, tc.want)
+				}
+			})
+		}
+
+		t.Run("absent when the server sends none", func(t *testing.T) {
+			t.Parallel()
+
+			client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+				return jsonResponse(http.StatusInternalServerError, `{}`), nil
+			})
+
+			var out map[string]any
+			err := client.GetJSON(context.Background(), "/v1/agents", &out)
+
+			var apiErr *APIError
+			if !errors.As(err, &apiErr) {
+				t.Fatalf("GetJSON() error = %T, want *APIError", err)
+			}
+			if apiErr.RequestID != "" {
+				t.Errorf("RequestID = %q, want empty", apiErr.RequestID)
+			}
+		})
+	})
+
+	t.Run("exposes the failing response headers", func(t *testing.T) {
+		t.Parallel()
+
+		// Retry-After is the case that matters: without the headers a caller
+		// being rate limited has no way to learn how long to wait, and has to
+		// guess a backoff the server already told it.
+		client, _ := newRecordingClient(t, func(*http.Request) (*http.Response, error) {
+			res := jsonResponse(http.StatusTooManyRequests, `{}`)
+			res.Header.Set("Retry-After", "42")
+			res.Header.Set("X-Ratelimit-Remaining", "0")
+			return res, nil
+		})
+
+		var out map[string]any
+		err := client.GetJSON(context.Background(), "/v1/agents", &out)
+
+		var rateLimitErr *RateLimitError
+		if !errors.As(err, &rateLimitErr) {
+			t.Fatalf("GetJSON() error = %T, want *RateLimitError", err)
+		}
+		if got := rateLimitErr.Header.Get("Retry-After"); got != "42" {
+			t.Errorf("Header.Get(Retry-After) = %q, want %q", got, "42")
+		}
+		if got := rateLimitErr.Header.Get("X-Ratelimit-Remaining"); got != "0" {
+			t.Errorf("Header.Get(X-Ratelimit-Remaining) = %q, want %q", got, "0")
+		}
+	})
+}

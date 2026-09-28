@@ -1,0 +1,75 @@
+name: Integration
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # daily 06:00 UTC
+  push:
+    branches: [main]
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  secret-gate:
+    name: Check integration credentials
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event_name != 'pull_request' || github.event.label.name == 'run-integration'
+    outputs:
+      enabled: ${{ steps.gate.outputs.enabled }}
+    steps:
+      # Same reasoning as the E2E gate: a repository that never configured the
+      # credentials is not misconfigured, and a permanently red workflow teaches
+      # everyone to ignore it. Skipping leaves the job grey rather than green,
+      # so an unconfigured suite still cannot pass for work it did not do.
+      - name: Decide whether the integration job can run
+        id: gate
+        env:
+          ORCA_TEST_API_KEY: ${{ secrets.ORCA_TEST_API_KEY }}
+          ORCA_TEST_BASE_URL: ${{ secrets.ORCA_TEST_BASE_URL }}
+        run: |
+          set -euo pipefail
+          # integrationClient trims before testing for empty, so a
+          # whitespace-only value counts as unset. Trim here too, or the
+          # gate would enable a run that silently exercises nothing.
+          key="$(printf '%s' "${ORCA_TEST_API_KEY:-}" | tr -d '[:space:]')"
+          url="$(printf '%s' "${ORCA_TEST_BASE_URL:-}" | tr -d '[:space:]')"
+          if [[ -n "${key}" && -n "${url}" ]]; then
+            echo "enabled=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          # One without the other is half a setup, not an absent one: a
+          # credential is only meaningful for the deployment that issued it.
+          if [[ -n "${key}" || -n "${url}" ]]; then
+            echo "::error::Set both the ORCA_TEST_API_KEY and ORCA_TEST_BASE_URL secrets, or neither."
+            exit 1
+          fi
+          echo "enabled=false" >> "${GITHUB_OUTPUT}"
+          echo "::notice::Integration credentials are not configured; skipping the live round-trips."
+
+  integration:
+    name: Live deployment round-trips
+    needs: secret-gate
+    if: needs.secret-gate.outputs.enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ORCA_TEST_API_KEY: ${{ secrets.ORCA_TEST_API_KEY }}
+      # A secret rather than a variable, so the deployment URL is masked in
+      # the logs like the credential is. There is no default deployment.
+      ORCA_TEST_BASE_URL: ${{ secrets.ORCA_TEST_BASE_URL }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run integration tests
+        run: go test -run TestIntegration -v -timeout 20m ./...

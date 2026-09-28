@@ -1,0 +1,109 @@
+fullnameOverride: orca-managed-agents
+
+images:
+  registry:
+    pullPolicy: IfNotPresent
+  harness:
+    pullPolicy: IfNotPresent
+  aiGateway:
+    pullPolicy: IfNotPresent
+
+secrets:
+  create: true
+  values:
+    databaseUrl: postgres://orca:orca@orca-managed-agents-postgres:5432/registry
+    transcriptStoreDatabaseUrl: postgres://orca:orca@orca-managed-agents-postgres:5432/transcriptstore
+    filestoreDatabaseUrl: postgres://orca:orca@orca-managed-agents-postgres:5432/filestore
+    memorystoreDatabaseUrl: postgres://orca:orca@orca-managed-agents-postgres:5432/memorystore
+    anthropicApiKey: fixture-only-not-a-real-anthropic-key
+    s3AccessKeyId: minioadmin
+    s3SecretAccessKey: minioadmin
+
+transcriptStore:
+  backend: postgres
+  postgres:
+    eventPollIntervalMs: "250"
+
+objectStorage:
+  endpoint: http://orca-managed-agents-minio:9000
+  forcePathStyle: true
+  bucket: orca-files
+  region: us-east-1
+  keyPrefix: managed-agents/
+  stsRoleArn: ""
+  allowStaticCredentials: true
+
+sessionJwt:
+  issuer: orca-registry
+  audience: ai-gateway
+  ttlSecs: "3600"
+
+secretStore:
+  mode: kubernetes
+
+internalAuth:
+  mode: kubernetes_service_account
+  audience: orca-registry-internal
+  tokenExpirationSeconds: 600
+
+# The chart's toolset is a sleeping pod that carries a released orca-cli image
+# and a Registry bearer token for interactive use. E2E builds and runs the SDK
+# under test from this checkout, so deploying that CLI would add an
+# unrelated credential, OIDC configuration, and pod without adding coverage.
+toolset:
+  enabled: false
+
+registry:
+  replicaCount: 1
+  sse:
+    heartbeatMs: "1000"
+  resources:
+    requests:
+      # Keep the single-node hosted-runner topology schedulable. No CPU limit is
+      # set, so the service can still burst while the E2E test is running.
+      cpu: 10m
+      memory: 192Mi
+    limits:
+      memory: 512Mi
+
+harness:
+  replicaCount: 1
+  anthropicBaseUrl: http://orca-managed-agents-fixture:8080
+  anthropicModelDefault: claude-sonnet-4-5-20250929
+  sandboxRuntime: in-memory
+  nodeEnv: test
+  sessionIdleTimeoutMs: "15000"
+  resources:
+    requests:
+      cpu: 10m
+      memory: 256Mi
+    limits:
+      memory: 768Mi
+
+aiGateway:
+  enabled: true
+  replicaCount: 1
+  destinationResolver:
+    egress:
+      allowedPrivateHosts:
+        - orca-managed-agents-fixture
+  audit:
+    kafka:
+      required: false
+      failureMode: allow
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+migrations:
+  registry:
+    initContainer:
+      enabled: true
+    job:
+      enabled: false
+
+tests:
+  enabled: false
