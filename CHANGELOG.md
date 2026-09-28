@@ -11,6 +11,13 @@
   and unavailable hosted-extension assertions. Public SDK APIs, vendored
   contracts, and mocked hosted-extension tests are unchanged.
 
+## [0.4.0](https://github.com/orca-ae/orca-sdk-go/compare/v0.3.1...v0.4.0) (2026-09-28)
+
+
+### Features
+
+* initial open-source release ([#1](https://github.com/orca-ae/orca-sdk-go/issues/1)) ([05f9512](https://github.com/orca-ae/orca-sdk-go/commit/05f951223f2b25681b64bad7eb9c06d2c3fd4f58))
+
 ## [0.3.1](https://github.com/orca-ae/orca-sdk-go/compare/v0.3.0...v0.3.1) (2026-09-28)
 
 
