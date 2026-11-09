@@ -72,9 +72,11 @@ type APIResource struct {
 
 // APIResourceList is the resource discovery response for one extension API group version.
 type APIResourceList struct {
-	Kind         string        `json:"kind" yaml:"kind"`
-	GroupVersion string        `json:"group_version" yaml:"group_version"`
-	Resources    []APIResource `json:"resources" yaml:"resources"`
+	// RequiredFeatures preserves feature identifiers, including future values.
+	RequiredFeatures []string      `json:"required_features" yaml:"required_features"`
+	Kind             string        `json:"kind" yaml:"kind"`
+	GroupVersion     string        `json:"group_version" yaml:"group_version"`
+	Resources        []APIResource `json:"resources" yaml:"resources"`
 }
 
 // HasGroup reports whether name appears in the group list. Safe to call on a nil list.

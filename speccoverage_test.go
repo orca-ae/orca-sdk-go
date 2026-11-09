@@ -104,6 +104,14 @@ func TestEveryCoreSpecPathIsImplemented(t *testing.T) {
 	}
 }
 
+// engineCorePaths are additions explicitly supported from the engine contract.
+var engineCorePaths = map[string]bool{
+	"/v1/environments/{}/rotate-key":       true,
+	"/v1/environments/{}/revoke-key":       true,
+	"/v1/environments/{}/work_stats":       true,
+	"/v1/sessions/{}/threads/{}/interrupt": true,
+}
+
 func TestNoResourcePathIsAbsentFromTheSpec(t *testing.T) {
 	t.Parallel()
 
@@ -121,7 +129,7 @@ func TestNoResourcePathIsAbsentFromTheSpec(t *testing.T) {
 	}
 
 	for path := range sdkPaths(t, "v1/") {
-		if _, ok := specTemplates[path]; !ok {
+		if _, ok := specTemplates[path]; !ok && !engineCorePaths[path] {
 			t.Errorf("a resource builds %s but the core spec declares no such path", path)
 		}
 	}
@@ -130,12 +138,12 @@ func TestNoResourcePathIsAbsentFromTheSpec(t *testing.T) {
 func TestEveryPolicyPricingSpecPathIsImplemented(t *testing.T) {
 	t.Parallel()
 
-	spec, err := os.ReadFile("openapi/managed-agents-extensions.yaml")
+	spec, err := os.ReadFile("openapi/managed-agents-engine.yaml")
 	if err != nil {
 		t.Fatalf("reading the vendored policy and pricing spec: %v", err)
 	}
 
-	declared := regexp.MustCompile(`(?m)^  (/apis/(?:policy|pricing)\.runorca\.ai/v1[a-zA-Z0-9/{}_.-]*):`)
+	declared := regexp.MustCompile(`(?m)^  (/apis/(?:policy|pricing|runtime)\.runorca\.ai/v[12][a-zA-Z0-9/{}_.-]*):`)
 	var specPaths []string
 	for _, match := range declared.FindAllStringSubmatch(string(spec), -1) {
 		specPaths = append(specPaths, match[1])
@@ -146,7 +154,7 @@ func TestEveryPolicyPricingSpecPathIsImplemented(t *testing.T) {
 		t.Fatal("no policy or pricing extension paths found in the spec")
 	}
 
-	built := sdkPaths(t, "apis/policy.runorca.ai/v1", "apis/pricing.runorca.ai/v1")
+	built := sdkPaths(t, "apis/policy.runorca.ai/v1", "apis/pricing.runorca.ai/v1", "apis/pricing.runorca.ai/v2", "apis/runtime.runorca.ai/v1")
 	for _, path := range specPaths {
 		if _, ok := built[specPlaceholder.ReplaceAllString(path, "{}")]; !ok {
 			t.Errorf("the extension spec declares %s but no resource builds it", path)

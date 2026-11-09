@@ -217,3 +217,46 @@ func (s EnvironmentService) Archive(ctx context.Context, environmentID string, o
 	}
 	return &environment, nil
 }
+
+// EnvironmentRotatedKey describes the engine wire response.
+type EnvironmentRotatedKey struct {
+	EnvKey          string `json:"env_key"`
+	EnvKeyExpiresAt string `json:"env_key_expires_at"`
+}
+
+// RotateKey calls the engine-only environment rotate-key operation.
+func (s EnvironmentService) RotateKey(ctx context.Context, environmentID string, opts ...option.RequestOption) (*EnvironmentRotatedKey, error) {
+	var result EnvironmentRotatedKey
+	path := "v1/environments/" + url.PathEscape(environmentID) + "/rotate-key"
+	if err := s.client.PostJSON(ctx, path, struct{}{}, &result, opts...); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// RevokeKey calls the engine-only environment revoke-key operation.
+func (s EnvironmentService) RevokeKey(ctx context.Context, environmentID string, opts ...option.RequestOption) (*Environment, error) {
+	var result Environment
+	path := "v1/environments/" + url.PathEscape(environmentID) + "/revoke-key"
+	if err := s.client.PostJSON(ctx, path, struct{}{}, &result, opts...); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
+
+// EnvironmentWorkStats describes the engine wire response.
+type EnvironmentWorkStats struct {
+	Depth           int64 `json:"depth"`
+	InFlight        int64 `json:"in_flight"`
+	WorkerConnected bool  `json:"worker_connected"`
+}
+
+// WorkStats calls the engine-only environment work_stats operation.
+func (s EnvironmentService) WorkStats(ctx context.Context, environmentID string, opts ...option.RequestOption) (*EnvironmentWorkStats, error) {
+	var result EnvironmentWorkStats
+	path := "v1/environments/" + url.PathEscape(environmentID) + "/work_stats"
+	if err := s.client.GetJSON(ctx, path, &result, opts...); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}

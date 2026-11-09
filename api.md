@@ -242,8 +242,11 @@ func (c *ConnectionsClient) Validate(ctx context.Context, cfg ConnectionConfig) 
 
 ```go
 func (s DiscoveryService) Groups(ctx context.Context, opts ...option.RequestOption) (*APIGroupList, error)
+func (s DiscoveryService) Harnesses(ctx context.Context, opts ...option.RequestOption) (*HarnessList, error)
 func (s DiscoveryService) PolicyGroupResources(ctx context.Context, opts ...option.RequestOption) (*APIResourceList, error)
 func (s DiscoveryService) PricingGroupResources(ctx context.Context, opts ...option.RequestOption) (*APIResourceList, error)
+func (s DiscoveryService) PricingV2GroupResources(ctx context.Context, opts ...option.RequestOption) (*APIResourceList, error)
+func (s DiscoveryService) RuntimeGroupResources(ctx context.Context, opts ...option.RequestOption) (*APIResourceList, error)
 ```
 
 ### EnvironmentService
@@ -254,7 +257,10 @@ func (s EnvironmentService) Create(ctx context.Context, params EnvironmentNewPar
 func (s EnvironmentService) Delete(ctx context.Context, environmentID string, opts ...option.RequestOption) (*EnvironmentDeleted, error)
 func (s EnvironmentService) Get(ctx context.Context, environmentID string, opts ...option.RequestOption) (*Environment, error)
 func (s EnvironmentService) List(ctx context.Context, params EnvironmentListParams, opts ...option.RequestOption) (*pagination.PageCursor[Environment], error)
+func (s EnvironmentService) RevokeKey(ctx context.Context, environmentID string, opts ...option.RequestOption) (*Environment, error)
+func (s EnvironmentService) RotateKey(ctx context.Context, environmentID string, opts ...option.RequestOption) (*EnvironmentRotatedKey, error)
 func (s EnvironmentService) Update(ctx context.Context, environmentID string, params EnvironmentUpdateParams, opts ...option.RequestOption) (*Environment, error)
+func (s EnvironmentService) WorkStats(ctx context.Context, environmentID string, opts ...option.RequestOption) (*EnvironmentWorkStats, error)
 ```
 
 ### FileService
@@ -297,6 +303,8 @@ func (c *FunctionsClient) Update(ctx context.Context, name string, cfg RegistryF
 func (s GuardrailService) Archive(ctx context.Context, guardrailID string, opts ...option.RequestOption) (*Guardrail, error)
 func (s GuardrailService) Create(ctx context.Context, params GuardrailNewParams, opts ...option.RequestOption) (*Guardrail, error)
 func (s GuardrailService) Delete(ctx context.Context, guardrailID string, opts ...option.RequestOption) (*GuardrailDeleted, error)
+func (s GuardrailService) DogwoodSchema(ctx context.Context, opts ...option.RequestOption) (*DogwoodSchema, error)
+func (s GuardrailService) Effective(ctx context.Context, params GuardrailEffectiveParams, opts ...option.RequestOption) (*GuardrailEffectiveResult, error)
 func (s GuardrailService) Get(ctx context.Context, guardrailID string, opts ...option.RequestOption) (*Guardrail, error)
 func (s GuardrailService) List(ctx context.Context, params GuardrailListParams, opts ...option.RequestOption) (*pagination.PageCursor[Guardrail], error)
 func (s GuardrailService) ListAutoPaging(ctx context.Context, params GuardrailListParams, opts ...option.RequestOption) (*pagination.PageCursorAutoPager[Guardrail], error)
@@ -391,6 +399,13 @@ func (s MemoryVersionService) List(ctx context.Context, memoryStoreID string, pa
 func (s MemoryVersionService) Redact(ctx context.Context, memoryStoreID, versionID string, opts ...option.RequestOption) (*MemoryVersion, error)
 ```
 
+### ModelPriceRuleService
+
+```go
+func (s ModelPriceRuleService) List(ctx context.Context, params ModelPriceRuleListParams, opts ...option.RequestOption) (*ModelPriceRulePage, error)
+func (s ModelPriceRuleService) ListAutoPaging(ctx context.Context, params ModelPriceRuleListParams, opts ...option.RequestOption) (*ModelPriceRuleAutoPager, error)
+```
+
 ### ModelPriceService
 
 ```go
@@ -481,6 +496,7 @@ func (s SessionThreadEventService) Stream(ctx context.Context, sessionID, thread
 ```go
 func (s SessionThreadService) Archive(ctx context.Context, sessionID, threadID string, opts ...option.RequestOption) (*SessionThread, error)
 func (s SessionThreadService) Get(ctx context.Context, sessionID, threadID string, opts ...option.RequestOption) (*SessionThread, error)
+func (s SessionThreadService) Interrupt(ctx context.Context, sessionID, threadID string, opts ...option.RequestOption) (*SessionThread, error)
 func (s SessionThreadService) List(ctx context.Context, sessionID string, params SessionThreadListParams, opts ...option.RequestOption) (*pagination.PageCursor[SessionThread], error)
 ```
 
@@ -693,12 +709,29 @@ func (t *FlexibleTimestamp) UnmarshalJSON(data []byte) error
 ```go
 func (r GuardrailRule) MarshalJSON() ([]byte, error)
 func (r *GuardrailRule) UnmarshalJSON(data []byte) error
+func (r GuardrailRule) Validate() error
 ```
 
 ### Memory
 
 ```go
 func (m Memory) IsPrefix() bool
+```
+
+### ModelPriceRuleAutoPager
+
+```go
+func (p *ModelPriceRuleAutoPager) Current() ModelPriceRule
+func (p *ModelPriceRuleAutoPager) Err() error
+func (p *ModelPriceRuleAutoPager) Next() bool
+func (p *ModelPriceRuleAutoPager) Page() *ModelPriceRulePage
+```
+
+### ModelPriceRulePage
+
+```go
+func (p *ModelPriceRulePage) GetNextPage(ctx context.Context) (*ModelPriceRulePage, error)
+func (p *ModelPriceRulePage) HasNextPage() bool
 ```
 
 ### OutcomeEvaluation
@@ -912,12 +945,19 @@ func MemoryStoreResource(memoryStoreID string) SessionResourceParam
 - `CredentialValidationMCPProbe`
 - `CredentialValidationRefresh`
 - `DecodeError`
+- `DogwoodSchema`
+- `DogwoodSchemaEventSchemas`
+- `EffectiveGuardrail`
+- `EffectiveGuardrailBundle`
+- `EffectiveGuardrailBundleScope`
 - `Environment`
 - `EnvironmentDeleted`
 - `EnvironmentListParams`
 - `EnvironmentNewParams`
+- `EnvironmentRotatedKey`
 - `EnvironmentScope`
 - `EnvironmentUpdateParams`
+- `EnvironmentWorkStats`
 - `Error`
 - `ExtensionNotAvailableError`
 - `File`
@@ -935,7 +975,11 @@ func MemoryStoreResource(memoryStoreID string) SessionResourceParam
 - `FunctionStatus`
 - `Guardrail`
 - `GuardrailDeleted`
+- `GuardrailEffectiveParams`
+- `GuardrailEffectiveResult`
 - `GuardrailListParams`
+- `GuardrailMCPManifest`
+- `GuardrailMode`
 - `GuardrailNewParams`
 - `GuardrailPhase`
 - `GuardrailRuleKind`
@@ -946,6 +990,10 @@ func MemoryStoreResource(memoryStoreID string) SessionResourceParam
 - `GuardrailUpdateParams`
 - `GuardrailVerdict`
 - `HTTPError`
+- `Harness`
+- `HarnessCapabilities`
+- `HarnessList`
+- `HarnessModel`
 - `InternalServerError`
 - `KafkaConnectionConfig`
 - `McpServerDefinition`
@@ -973,6 +1021,13 @@ func MemoryStoreResource(memoryStoreID string) SessionResourceParam
 - `ModelPrice`
 - `ModelPriceGetParams`
 - `ModelPriceListParams`
+- `ModelPriceRule`
+- `ModelPriceRuleConditionalModel`
+- `ModelPriceRuleConditions`
+- `ModelPriceRuleListParams`
+- `ModelPriceRuleProvenance`
+- `ModelPriceRuleRates`
+- `ModelPriceRuleTokenRange`
 - `ModelSpeed`
 - `MultipartFile`
 - `MultipartRequest`

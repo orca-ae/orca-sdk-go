@@ -144,6 +144,36 @@ func (c *Client) ensurePricingExtension(ctx context.Context, opts ...option.Requ
 	return c.ensureExtensionAvailable(ctx, PricingExtensionGroup, opts...)
 }
 
+// ensureExtensionVersion requires an advertised version, not just its group.
+func (c *Client) ensureExtensionVersion(ctx context.Context, group, version string, opts ...option.RequestOption) error {
+	if err := c.ensureExtensionAvailable(ctx, group, opts...); err != nil {
+		return err
+	}
+	cfg, err := c.cfg.With(opts...)
+	if err != nil {
+		return err
+	}
+	baseURL := ""
+	if cfg.BaseURL != nil {
+		baseURL = cfg.BaseURL.String()
+	}
+	groups, err := c.discovery.resolve(baseURL, func() (*APIGroupList, error) { return c.getAPIGroupsWithConfig(ctx, cfg) })
+	if err != nil {
+		return err
+	}
+	for _, entry := range groups.Groups {
+		if entry.Name != group {
+			continue
+		}
+		for _, advertised := range entry.Versions {
+			if advertised.Version == version && advertised.GroupVersion == group+"/"+version {
+				return nil
+			}
+		}
+	}
+	return &apierror.ExtensionNotAvailableError{Group: group, BaseURL: baseURL, Reason: "the deployment does not advertise version " + version}
+}
+
 // getAPIGroupsWithConfig performs the discovery request using an already
 // resolved config, so the probe carries the same deployment, credential and
 // per-call controls as the call that triggered it.

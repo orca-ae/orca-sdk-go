@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Features
+
+* Align policy, pricing v2 and runtime discovery with the pinned public engine
+  contract, preserving the portable core and hosted-extension contracts.
+* Add Dogwood rules, guardrail modes and warnings, effective bundles with
+  conditional lease headers, and catalog-preserving pricing rule pagination.
+* Add engine environment key rotation/revocation, work stats, harness discovery
+  and thread interruption.
+
+### Bug fixes
+
+* Preserve full unknown guardrail rule objects when decoding and re-encoding;
+  reject malformed known rules rather than treating them as unknown.
+
 ### Maintenance
 
 * Use neutral hosted-extension and OIDC terminology in documentation, examples,
