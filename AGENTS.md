@@ -24,8 +24,14 @@ endpoints, or add fields no spec declares.
 |---|---|---|
 | `openapi/managed-agents.yaml` | No `servers` entry; paths carry `/v1`, `/api`, or `/apis` explicitly. | Core: agents (+versions), sessions (+events, files, resources, threads(.events)), environments, files, skills (+versions), vaults (+credentials), memory stores (+memories, memory versions), triggers (+sessions), discovery. |
 | `openapi/managed-agents-deployment.overlay.yaml` | Applies to `managed-agents.yaml`. | Deviations from the core contract. Its removals define what is **not** portable across both supported backends. |
-| `openapi/managed-agents-extensions.yaml` | Paths carry `/apis/policy.runorca.ai/v1` or `/apis/pricing.runorca.ai/v1`. | Policy guardrails, pricing model prices, and resource discovery for both groups. |
+| `openapi/managed-agents-engine.yaml` | Paths carry full `/apis/...` or `/v1/...` prefixes. | Engine policy, pricing v1/v2, runtime discovery, and explicitly supported engine-only core additions. Portable core remains governed by the first two artifacts. |
 | `openapi/cloud-extensions.yaml` | `/apis/cloud.sn.io/v1` | The whole `Cloud` namespace: API-resource discovery, agent providers, catalogs, connections, functions, health, packages, sink/source connectors, Kafka Connect. |
+
+The engine artifact is the exact public generated contract pinned to
+`80d1613ae47b42534307a854c1e7a6eb51fc996a`. Its overlapping core schemas do
+not replace the portable core contract or widen the deployment overlay.
+`enginecontract_test.go` classifies all 114 operations: 89 portable, 21 engine
+extension/addition operations, and four justified exclusions.
 
 Apply the overlay's portability rules to core APIs:
 

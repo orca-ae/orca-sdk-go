@@ -6,6 +6,7 @@ package orca
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/url"
 
 	"github.com/orca-ae/orca-sdk-go/option"
@@ -53,35 +54,94 @@ const (
 type GuardrailStateScope string
 
 const (
-	GuardrailStateScopeTurn          GuardrailStateScope = "turn"
-	GuardrailStateScopeSession       GuardrailStateScope = "session"
-	GuardrailStateScopeSubjectWindow GuardrailStateScope = "subject_window"
+	// GuardrailStateScopeWorkspaceWindow shares state across a workspace window.
+	GuardrailStateScopeWorkspaceWindow GuardrailStateScope = "workspace_window"
+	GuardrailStateScopeTurn            GuardrailStateScope = "turn"
+	GuardrailStateScopeSession         GuardrailStateScope = "session"
+	GuardrailStateScopeSubjectWindow   GuardrailStateScope = "subject_window"
 )
 
-// GuardrailRuleKind discriminates the two guardrail rule shapes.
+// GuardrailRuleKind discriminates known and future guardrail rule shapes.
 type GuardrailRuleKind string
 
 const (
+	// GuardrailRuleDogwood selects the Dogwood policy language.
+	GuardrailRuleDogwood    GuardrailRuleKind = "dogwood"
 	GuardrailRuleBuiltin    GuardrailRuleKind = "builtin"
 	GuardrailRuleExpression GuardrailRuleKind = "expression"
 )
 
-// GuardrailRule configures either a named builtin or an expression.
-//
-// Builtin and Params apply when Kind is builtin. Expression, OnFalse, and
-// Reason apply when Kind is expression.
-type GuardrailRule struct {
-	Kind GuardrailRuleKind `json:"kind"`
+// GuardrailMode controls whether policy violations are enforced or observed.
+type GuardrailMode string
 
-	Builtin string         `json:"builtin,omitzero"`
-	Params  map[string]any `json:"params,omitzero"`
+const (
+	// GuardrailModeEnforce enforces policy verdicts.
+	GuardrailModeEnforce GuardrailMode = "enforce"
+	// GuardrailModeObserve records violations without enforcement.
+	GuardrailModeObserve GuardrailMode = "observe"
+)
 
-	Expression string           `json:"expression,omitzero"`
-	OnFalse    GuardrailVerdict `json:"on_false,omitzero"`
-	Reason     string           `json:"reason,omitzero"`
+// GuardrailMCPManifest supplies tool definitions for a Dogwood policy.
+type GuardrailMCPManifest struct {
+	Server string           `json:"server"`
+	URL    string           `json:"url"`
+	Tools  []map[string]any `json:"tools"`
 }
 
-// MarshalJSON implements [json.Marshaler].
+// GuardrailRule holds a known rule or the full wire object for a future kind.
+// Create and Update accept only known kinds; decoding preserves unknown kinds.
+type GuardrailRule struct {
+	Kind         GuardrailRuleKind      `json:"kind"`
+	Builtin      string                 `json:"builtin,omitzero"`
+	Params       map[string]any         `json:"params,omitzero"`
+	Expression   string                 `json:"expression,omitzero"`
+	OnFalse      GuardrailVerdict       `json:"on_false,omitzero"`
+	Reason       string                 `json:"reason,omitzero"`
+	Policy       string                 `json:"policy,omitzero"`
+	AppliesTo    string                 `json:"applies_to,omitzero"`
+	History      string                 `json:"history,omitzero"`
+	MCPManifests []GuardrailMCPManifest `json:"mcp_manifests,omitzero"`
+	// Raw contains the complete object only for an unknown kind.
+	Raw json.RawMessage `json:"-"`
+}
+
+// Validate checks known rule authoring without restricting future responses.
+func (r GuardrailRule) Validate() error {
+	switch r.Kind {
+	case GuardrailRuleBuiltin:
+		if r.Builtin == "" {
+			return fmt.Errorf("builtin rule requires builtin")
+		}
+	case GuardrailRuleExpression:
+		if r.Expression == "" || (r.OnFalse != GuardrailVerdictAsk && r.OnFalse != GuardrailVerdictDeny) {
+			return fmt.Errorf("expression rule requires expression and on_false ask or deny")
+		}
+	case GuardrailRuleDogwood:
+		if r.Policy == "" {
+			return fmt.Errorf("dogwood rule requires policy")
+		}
+		if r.AppliesTo != "" && r.AppliesTo != "all_tools" && r.AppliesTo != "mcp_tools" {
+			return fmt.Errorf("invalid dogwood applies_to %q", r.AppliesTo)
+		}
+		if r.History != "" && r.History != "session" && r.History != "principal" {
+			return fmt.Errorf("invalid dogwood history %q", r.History)
+		}
+		if len(r.MCPManifests) > 64 {
+			return fmt.Errorf("dogwood allows at most 64 MCP manifests")
+		}
+		for _, manifest := range r.MCPManifests {
+			parsed, err := url.Parse(manifest.URL)
+			if manifest.Server == "" || err != nil || parsed.Scheme == "" || manifest.Tools == nil || len(manifest.Tools) > 1000 {
+				return fmt.Errorf("dogwood MCP manifest requires server, absolute URL and at most 1000 tools")
+			}
+		}
+	default:
+		return fmt.Errorf("cannot author unknown guardrail rule kind %q", r.Kind)
+	}
+	return nil
+}
+
+// MarshalJSON preserves complete unknown objects and selects known fields.
 func (r GuardrailRule) MarshalJSON() ([]byte, error) {
 	switch r.Kind {
 	case GuardrailRuleBuiltin:
@@ -89,71 +149,73 @@ func (r GuardrailRule) MarshalJSON() ([]byte, error) {
 			Kind    GuardrailRuleKind `json:"kind"`
 			Builtin string            `json:"builtin"`
 			Params  map[string]any    `json:"params,omitzero"`
-		}{Kind: r.Kind, Builtin: r.Builtin, Params: r.Params})
+		}{r.Kind, r.Builtin, r.Params})
 	case GuardrailRuleExpression:
 		return json.Marshal(struct {
 			Kind       GuardrailRuleKind `json:"kind"`
 			Expression string            `json:"expression"`
 			OnFalse    GuardrailVerdict  `json:"on_false"`
 			Reason     string            `json:"reason,omitzero"`
-		}{Kind: r.Kind, Expression: r.Expression, OnFalse: r.OnFalse, Reason: r.Reason})
+		}{r.Kind, r.Expression, r.OnFalse, r.Reason})
+	case GuardrailRuleDogwood:
+		return json.Marshal(struct {
+			Kind         GuardrailRuleKind      `json:"kind"`
+			Policy       string                 `json:"policy"`
+			AppliesTo    string                 `json:"applies_to,omitzero"`
+			History      string                 `json:"history,omitzero"`
+			MCPManifests []GuardrailMCPManifest `json:"mcp_manifests,omitzero"`
+		}{r.Kind, r.Policy, r.AppliesTo, r.History, r.MCPManifests})
 	default:
+		if len(r.Raw) != 0 {
+			return append([]byte(nil), r.Raw...), nil
+		}
 		return json.Marshal(struct {
 			Kind GuardrailRuleKind `json:"kind"`
-		}{Kind: r.Kind})
+		}{r.Kind})
 	}
 }
 
-// UnmarshalJSON implements [json.Unmarshaler] and selects the declared rule shape.
+// UnmarshalJSON rejects malformed known shapes rather than hiding them as unknown.
 func (r *GuardrailRule) UnmarshalJSON(data []byte) error {
-	var discriminator struct {
+	var tag struct {
 		Kind GuardrailRuleKind `json:"kind"`
 	}
-	if err := json.Unmarshal(data, &discriminator); err != nil {
+	if err := json.Unmarshal(data, &tag); err != nil {
 		return err
 	}
-
-	switch discriminator.Kind {
-	case GuardrailRuleBuiltin:
-		var decoded struct {
-			Kind    GuardrailRuleKind `json:"kind"`
-			Builtin string            `json:"builtin"`
-			Params  map[string]any    `json:"params"`
-		}
-		if err := json.Unmarshal(data, &decoded); err != nil {
-			return err
-		}
-		*r = GuardrailRule{Kind: decoded.Kind, Builtin: decoded.Builtin, Params: decoded.Params}
-		return nil
-	case GuardrailRuleExpression:
-		var decoded struct {
-			Kind       GuardrailRuleKind `json:"kind"`
-			Expression string            `json:"expression"`
-			OnFalse    GuardrailVerdict  `json:"on_false"`
-			Reason     string            `json:"reason"`
-		}
-		if err := json.Unmarshal(data, &decoded); err != nil {
-			return err
-		}
-		*r = GuardrailRule{
-			Kind: decoded.Kind, Expression: decoded.Expression, OnFalse: decoded.OnFalse,
-			Reason: decoded.Reason,
-		}
-		return nil
-	default:
-		var decoded struct {
-			Kind GuardrailRuleKind `json:"kind"`
-		}
-		if err := json.Unmarshal(data, &decoded); err != nil {
-			return err
-		}
-		*r = GuardrailRule{Kind: decoded.Kind}
-		return nil
+	if tag.Kind == "" {
+		return fmt.Errorf("guardrail rule requires kind")
 	}
+	switch tag.Kind {
+	case GuardrailRuleBuiltin, GuardrailRuleExpression, GuardrailRuleDogwood:
+		type shape GuardrailRule
+		var decoded shape
+		if err := json.Unmarshal(data, &decoded); err != nil {
+			return err
+		}
+		rule := GuardrailRule(decoded)
+		if err := rule.Validate(); err != nil {
+			return err
+		}
+		// Drop fields of other variants, matching the original union behavior.
+		switch rule.Kind {
+		case GuardrailRuleBuiltin:
+			*r = GuardrailRule{Kind: rule.Kind, Builtin: rule.Builtin, Params: rule.Params}
+		case GuardrailRuleExpression:
+			*r = GuardrailRule{Kind: rule.Kind, Expression: rule.Expression, OnFalse: rule.OnFalse, Reason: rule.Reason}
+		case GuardrailRuleDogwood:
+			*r = GuardrailRule{Kind: rule.Kind, Policy: rule.Policy, AppliesTo: rule.AppliesTo, History: rule.History, MCPManifests: rule.MCPManifests}
+		}
+	default:
+		*r = GuardrailRule{Kind: tag.Kind, Raw: append(json.RawMessage(nil), data...)}
+	}
+	return nil
 }
 
 // Guardrail is a policy applied to one or more agent-loop phases.
 type Guardrail struct {
+	Mode        GuardrailMode     `json:"mode"`
+	Warnings    []string          `json:"warnings,omitzero"`
 	ID          string            `json:"id"`
 	Type        string            `json:"type"`
 	Name        string            `json:"name"`
@@ -193,6 +255,7 @@ type GuardrailTypeList struct {
 
 // GuardrailNewParams creates a guardrail.
 type GuardrailNewParams struct {
+	Mode        param.Opt[GuardrailMode]  `json:"mode,omitzero"`
 	Name        string                    `json:"name"`
 	Description param.Opt[string]         `json:"description,omitzero"`
 	Enabled     param.Opt[bool]           `json:"enabled,omitzero"`
@@ -204,6 +267,7 @@ type GuardrailNewParams struct {
 
 // GuardrailUpdateParams partially updates a guardrail.
 type GuardrailUpdateParams struct {
+	Mode        param.Opt[GuardrailMode]      `json:"mode,omitzero"`
 	Name        param.Opt[string]             `json:"name,omitzero"`
 	Description param.Opt[string]             `json:"description,omitzero"`
 	Enabled     param.Opt[bool]               `json:"enabled,omitzero"`
@@ -223,6 +287,9 @@ type GuardrailListParams struct {
 // Create creates a guardrail.
 func (s GuardrailService) Create(ctx context.Context, params GuardrailNewParams, opts ...option.RequestOption) (*Guardrail, error) {
 	if err := s.client.ensurePolicyExtension(ctx, opts...); err != nil {
+		return nil, err
+	}
+	if err := params.Rule.Validate(); err != nil {
 		return nil, err
 	}
 	var guardrail Guardrail
@@ -270,6 +337,11 @@ func (s GuardrailService) Get(ctx context.Context, guardrailID string, opts ...o
 func (s GuardrailService) Update(ctx context.Context, guardrailID string, params GuardrailUpdateParams, opts ...option.RequestOption) (*Guardrail, error) {
 	if err := s.client.ensurePolicyExtension(ctx, opts...); err != nil {
 		return nil, err
+	}
+	if rule, ok := params.Rule.Value(); ok {
+		if err := rule.Validate(); err != nil {
+			return nil, err
+		}
 	}
 	var guardrail Guardrail
 	path := "apis/policy.runorca.ai/v1/guardrails/" + url.PathEscape(guardrailID)

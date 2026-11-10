@@ -81,6 +81,9 @@ type Client struct {
 	// ModelPrices reads effective prices served by the pricing extension.
 	ModelPrices ModelPriceService
 
+	// ModelPriceRules reads engine pricing v2 catalog snapshots.
+	ModelPriceRules ModelPriceRuleService
+
 	// Discovery reports what a deployment can do.
 	Discovery DiscoveryService
 
@@ -105,6 +108,7 @@ func newClientFrom(cfg *requestconfig.RequestConfig, discovery *discoveryCache) 
 	client.Triggers = newTriggerService(client)
 	client.Guardrails = GuardrailService{client: client}
 	client.ModelPrices = ModelPriceService{client: client}
+	client.ModelPriceRules = ModelPriceRuleService{client: client}
 	client.Discovery = DiscoveryService{client: client}
 	client.Cloud = newCloudService(client)
 	return client

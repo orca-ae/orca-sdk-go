@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+### Features
+
+* Align policy, pricing v2 and runtime discovery with the pinned public engine
+  contract, preserving the portable core and hosted-extension contracts.
+* Add Dogwood rules, guardrail modes and warnings, effective bundles with
+  conditional lease headers, and catalog-preserving pricing rule pagination.
+* Add engine environment key rotation/revocation, work stats, harness discovery
+  and thread interruption.
+
+### Bug fixes
+
+* Disable automatic retries for thread interruption by default, including when
+  the client enables retries, to avoid duplicate terminal events after a failed
+  response. Explicit per-call retry options still apply.
+* Refresh missing extension groups and versions after 15 seconds from the last
+  successful discovery fetch. Preserve supported capabilities and retry failed
+  refreshes without discarding the previous snapshot.
+
+* Disable automatic retries for environment key rotation by default, including
+  when the client enables retries, so a late attempt cannot invalidate a returned key.
+  Explicit per-call retry options still apply.
+
+* Preserve full unknown guardrail rule objects when decoding and re-encoding;
+  reject malformed known rules rather than treating them as unknown.
+
 ### Maintenance
 
 * Use neutral hosted-extension and OIDC terminology in documentation, examples,

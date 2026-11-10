@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/orca-ae/orca-sdk-go/internal/apierror"
 	"github.com/orca-ae/orca-sdk-go/internal/requestconfig"
@@ -16,18 +17,26 @@ import (
 
 // discoveryCache remembers which extension groups a deployment advertises.
 //
-// Every cloud call has to know before it goes out, and asking on each one would
-// double the request count for a fact that does not change while a process
-// runs. Results are keyed by effective base URL, because one program may talk
+// Supported capabilities remain cached; missing capabilities refresh after
+// 15 seconds from the last successful fetch, allowing deployments to upgrade.
+// Results are keyed by effective base URL, because one program may talk
 // to several deployments through per-call options and they will not agree.
 //
 // Only successes are cached: a discovery attempt that failed says nothing about
 // the deployment, and remembering it would turn one bad moment into a permanent
 // refusal to make any cloud call at all.
 type discoveryCache struct {
+	now      func() time.Time
 	mu       sync.Mutex
-	groups   map[string]*APIGroupList
+	groups   map[string]discoverySnapshot
 	inFlight map[string]*discoveryCall
+}
+
+const missingCapabilityTTL = 15 * time.Second
+
+type discoverySnapshot struct {
+	groups    *APIGroupList
+	fetchedAt time.Time
 }
 
 // discoveryCall is one in-flight probe that concurrent callers wait on, so a
@@ -40,17 +49,19 @@ type discoveryCall struct {
 
 func newDiscoveryCache() *discoveryCache {
 	return &discoveryCache{
-		groups:   map[string]*APIGroupList{},
+		now:      time.Now,
+		groups:   map[string]discoverySnapshot{},
 		inFlight: map[string]*discoveryCall{},
 	}
 }
 
-// resolve returns the cached groups for key, running fetch if needed.
-func (c *discoveryCache) resolve(key string, fetch func() (*APIGroupList, error)) (*APIGroupList, error) {
+// resolve refreshes an aged snapshot only when it lacks the requested capability.
+// On refresh failure it returns the previous groups alongside the fetch error.
+func (c *discoveryCache) resolve(key, group, version string, fetch func() (*APIGroupList, error)) (*APIGroupList, error) {
 	c.mu.Lock()
-	if groups, ok := c.groups[key]; ok {
+	if snapshot, ok := c.groups[key]; ok && (supportsExtension(snapshot.groups, group, version) || c.now().Sub(snapshot.fetchedAt) < missingCapabilityTTL) {
 		c.mu.Unlock()
-		return groups, nil
+		return snapshot.groups, nil
 	}
 	if call, ok := c.inFlight[key]; ok {
 		c.mu.Unlock()
@@ -67,7 +78,9 @@ func (c *discoveryCache) resolve(key string, fetch func() (*APIGroupList, error)
 	c.mu.Lock()
 	delete(c.inFlight, key)
 	if call.err == nil {
-		c.groups[key] = call.groups
+		c.groups[key] = discoverySnapshot{groups: call.groups, fetchedAt: c.now()}
+	} else {
+		call.groups = c.groups[key].groups
 	}
 	c.mu.Unlock()
 	close(call.done)
@@ -83,6 +96,11 @@ func (c *discoveryCache) resolve(key string, fetch func() (*APIGroupList, error)
 // reads as "that connection does not exist" rather than "this deployment has no
 // connections at all".
 func (c *Client) ensureExtensionAvailable(ctx context.Context, group string, opts ...option.RequestOption) error {
+	return c.ensureExtensionVersion(ctx, group, "", opts...)
+}
+
+// ensureExtensionVersion requires an advertised version, or just the group when version is empty.
+func (c *Client) ensureExtensionVersion(ctx context.Context, group, version string, opts ...option.RequestOption) error {
 	cfg, err := c.cfg.With(opts...)
 	if err != nil {
 		return err
@@ -93,7 +111,7 @@ func (c *Client) ensureExtensionAvailable(ctx context.Context, group string, opt
 		baseURL = cfg.BaseURL.String()
 	}
 
-	groups, err := c.discovery.resolve(baseURL, func() (*APIGroupList, error) {
+	groups, err := c.discovery.resolve(baseURL, group, version, func() (*APIGroupList, error) {
 		return c.getAPIGroupsWithConfig(ctx, cfg)
 	})
 	if err != nil {
@@ -102,7 +120,7 @@ func (c *Client) ensureExtensionAvailable(ctx context.Context, group string, opt
 		// unavailable extension with a version hint rather than as a 404 the
 		// caller would try to debug at the resource path.
 		var notFound *apierror.NotFoundError
-		if errors.As(err, &notFound) {
+		if groups == nil && errors.As(err, &notFound) {
 			fmt.Fprintf(cfg.WarningWriter,
 				"warning: GET /apis returned 404 — this deployment predates extension discovery "+
 					"and cannot serve the %q extension group. Confirm the server version if this "+
@@ -117,7 +135,10 @@ func (c *Client) ensureExtensionAvailable(ctx context.Context, group string, opt
 	}
 
 	if groups.HasGroup(group) {
-		return nil
+		if supportsExtension(groups, group, version) {
+			return nil
+		}
+		return &apierror.ExtensionNotAvailableError{Group: group, BaseURL: baseURL, Reason: "the deployment does not advertise version " + version}
 	}
 
 	// An empty list is a normal, fully-functional deployment with no extensions
@@ -142,6 +163,23 @@ func (c *Client) ensurePolicyExtension(ctx context.Context, opts ...option.Reque
 // ensurePricingExtension gates a pricing extension call.
 func (c *Client) ensurePricingExtension(ctx context.Context, opts ...option.RequestOption) error {
 	return c.ensureExtensionAvailable(ctx, PricingExtensionGroup, opts...)
+}
+
+func supportsExtension(groups *APIGroupList, group, version string) bool {
+	if version == "" {
+		return groups.HasGroup(group)
+	}
+	for _, entry := range groups.Groups {
+		if entry.Name != group {
+			continue
+		}
+		for _, advertised := range entry.Versions {
+			if advertised.Version == version && advertised.GroupVersion == group+"/"+version {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // getAPIGroupsWithConfig performs the discovery request using an already

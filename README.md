@@ -87,6 +87,9 @@ agent, err := client.Agents.Get(ctx, agentID, orca.AgentGetParams{},
 
 Requests are retried only where repeating can help — a timeout, conflict, rate
 limit, 5xx, or transport failure — and `Retry-After` is obeyed.
+Environment key rotation and thread interruption default to zero retries even
+when the client enables them: a failed response can follow a successful mutation.
+An explicit per-call `option.WithMaxRetries` overrides that default.
 
 ### Pagination
 
@@ -173,7 +176,13 @@ if errors.As(err, &unavailable) {
 
 Guardrails and model prices are served by separately discoverable extension
 groups. Their typed services run the same cached capability check before the
-business request:
+business request.
+
+Capability snapshots are cached per deployment base URL. Advertised groups and
+versions stay usable without an age-based refresh. A missing group or version
+triggers discovery again once the last successful fetch is at least 15 seconds
+old. Concurrent probes share that fetch; failures return the discovery error
+without replacing the previous snapshot or delaying the next refresh attempt.
 
 ```go
 guardrail, err := client.Guardrails.Create(ctx, orca.GuardrailNewParams{

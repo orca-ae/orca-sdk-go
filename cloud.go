@@ -18,7 +18,8 @@ import (
 // cloud.sn.io group, and returns [ExtensionNotAvailableError] when it does not.
 // That check is what turns "this deployment has no connections at all" into a
 // distinct answer, rather than a 404 from a path the caller has no reason to
-// doubt. Discovery is resolved once per deployment and cached.
+// doubt. Discovery is cached per deployment; missing capabilities refresh after
+// 15 seconds from the last successful fetch.
 //
 // The pre-existing NewCatalogClient-style constructors reach the same
 // operations without the gate, and remain for callers that already gate for
@@ -79,7 +80,7 @@ func newCloudService(client *Client) CloudService {
 // Every operation in this tree already checks, so calling it is never required.
 // It exists for callers that want to fail early rather than partway through -
 // a command-line tool checking before it starts work, say - and it shares the
-// same cached probe, so asking first costs no extra round trip.
+// same cached probe, subject to the same refresh for missing capabilities.
 func (s CloudService) EnsureAvailable(ctx context.Context, opts ...option.RequestOption) error {
 	return s.client.ensureCloudExtension(ctx, opts...)
 }

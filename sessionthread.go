@@ -142,3 +142,17 @@ func (s SessionThreadEventService) Stream(ctx context.Context, sessionID, thread
 	path := "v1/sessions/" + url.PathEscape(sessionID) + "/threads/" + url.PathEscape(threadID) + "/stream"
 	return StreamEvents[SessionEvent](ctx, s.client, path, opts...)
 }
+
+// Interrupt interrupts one thread using the engine-only action endpoint.
+// Session-level user.interrupt events remain available through Events.Send.
+// Retries default to zero because a failed response can follow a successful
+// terminal-event append. A per-call WithMaxRetries explicitly overrides this.
+func (s SessionThreadService) Interrupt(ctx context.Context, sessionID, threadID string, opts ...option.RequestOption) (*SessionThread, error) {
+	opts = append([]option.RequestOption{option.WithMaxRetries(0)}, opts...)
+	var result SessionThread
+	path := "v1/sessions/" + url.PathEscape(sessionID) + "/threads/" + url.PathEscape(threadID) + "/interrupt"
+	if err := s.client.PostJSON(ctx, path, struct{}{}, &result, opts...); err != nil {
+		return nil, err
+	}
+	return &result, nil
+}
