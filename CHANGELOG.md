@@ -13,6 +13,10 @@
 
 ### Bug fixes
 
+* Disable automatic retries for environment key rotation by default, including
+  when the client enables retries, so a late attempt cannot invalidate a returned key.
+  Explicit per-call retry options still apply.
+
 * Preserve full unknown guardrail rule objects when decoding and re-encoding;
   reject malformed known rules rather than treating them as unknown.
 

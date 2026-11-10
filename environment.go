@@ -225,7 +225,10 @@ type EnvironmentRotatedKey struct {
 }
 
 // RotateKey calls the engine-only environment rotate-key operation.
+// Retries default to zero because a late attempt can invalidate a returned key.
+// A per-call WithMaxRetries option can explicitly override this default.
 func (s EnvironmentService) RotateKey(ctx context.Context, environmentID string, opts ...option.RequestOption) (*EnvironmentRotatedKey, error) {
+	opts = append([]option.RequestOption{option.WithMaxRetries(0)}, opts...)
 	var result EnvironmentRotatedKey
 	path := "v1/environments/" + url.PathEscape(environmentID) + "/rotate-key"
 	if err := s.client.PostJSON(ctx, path, struct{}{}, &result, opts...); err != nil {
