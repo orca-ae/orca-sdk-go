@@ -13,6 +13,13 @@
 
 ### Bug fixes
 
+* Disable automatic retries for thread interruption by default, including when
+  the client enables retries, to avoid duplicate terminal events after a failed
+  response. Explicit per-call retry options still apply.
+* Refresh missing extension groups and versions after 15 seconds from the last
+  successful discovery fetch. Preserve supported capabilities and retry failed
+  refreshes without discarding the previous snapshot.
+
 * Disable automatic retries for environment key rotation by default, including
   when the client enables retries, so a late attempt cannot invalidate a returned key.
   Explicit per-call retry options still apply.

@@ -53,7 +53,7 @@ only retirement path.
 | `Files.List` / `Get` / `Download` / `Delete` | Files attached to a session. ID-cursor pagination. |
 | `Resources.List` / `Add` / `Get` / `Update` / `Delete` | Files, repositories, and memory stores the session can reach. |
 | `Threads.List` / `Get` / `Archive` | Threads the coordinator spawned. No create. |
-| `Threads.Interrupt` | Engine-only POST action on one thread; no request body. |
+| `Threads.Interrupt` | Engine-only POST action on one thread; sends `{}`. Defaults to zero retries to avoid duplicate terminal events; explicit per-call retry options override this. |
 | `Threads.Events.List` / `Stream` | One thread's events. The stream is `/threads/{id}/stream`. |
 
 `client.Session(id)` returns a handle that binds the session ID once, so the
@@ -172,8 +172,14 @@ not evaluate billing or automatically cache catalogs.
 Served under `/apis/cloud.sn.io/v1` by the cloud extension service rather than
 the core engine. **Every call is gated**: against a deployment that does not
 advertise `cloud.sn.io`, it returns `ExtensionNotAvailableError` rather than a
-404 from a path the caller has no reason to doubt. Discovery is resolved once
-per deployment and cached.
+404 from a path the caller has no reason to doubt. Discovery snapshots are cached
+per deployment base URL. Supported groups and versions reuse the snapshot
+regardless of age. Missing groups or versions refresh after 15 seconds from the
+last successful fetch; concurrent missing probes share the refresh. Failed
+refreshes return the discovery error and retain the last successful snapshot
+and timestamp, so supported capabilities remain usable and the next missing
+probe can retry immediately. This also applies to policy, pricing and runtime
+extension gates.
 
 | Namespace | Operations |
 |---|---|
