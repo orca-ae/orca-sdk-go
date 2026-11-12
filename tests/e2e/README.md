@@ -60,11 +60,25 @@ tests/e2e/run-managed-agents-direct.sh
 
 ## In CI
 
-`.github/workflows/e2e-managed-agents.yml` runs on same-repository pull requests,
-pushes to `main`, nightly, and on demand. It requires `SNBOT_GITHUB_TOKEN` for
-engine source access and begins with a gate that skips the job when that secret
-is not configured or the pull request is from a fork. A repository that never
-configured it is not misconfigured, and a permanently red workflow teaches
-everyone to ignore it.
+`.github/workflows/e2e-managed-agents.yml` runs only on pushes to `main`,
+nightly on the default branch (which must remain `main`), and manual dispatches
+selecting `main`. Both credential-bearing jobs reject every other event/ref.
+The SDK checkout uses the triggering immutable `github.sha`, not a moving branch
+or a PR ref, and uses a fresh hosted runner without the Go dependency cache.
+It skips full-stack E2E if `SNBOT_GITHUB_TOKEN` is not configured.
+
+Pull requests retain ordinary CI lint, unit/mock tests, and compilation/vet of
+the `e2e`-tagged suite in `scripts/lint`, but no longer run this private-source
+full-stack test before merge. The same stack is still tested on `main` and on
+the nightly schedule. No private source artifacts are transferred to PR jobs.
+
+This is a workflow trust-boundary fix, not a repository permission boundary.
+Someone who can push another workflow can still reference repository-level
+secrets. Administrators must separately protect `main` and workflow changes,
+replace the shared PAT with minimum-scope source/package-read credentials, and
+move credentials to an Environment restricted to trusted refs with appropriate
+reviewers. This change does not configure those settings. The trusted E2E job
+still needs a credential for private source and image pulls, including a local
+Kind imagePullSecret; PR code must never execute in that job.
 
 The workflow uploads no artifacts, because GitHub does not mask those.

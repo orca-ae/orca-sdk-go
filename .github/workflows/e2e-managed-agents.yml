@@ -1,7 +1,6 @@
 name: E2E - Managed Agents direct
 
 on:
-  pull_request:
   push:
     branches: [main]
   schedule:
@@ -19,6 +18,10 @@ concurrency:
 jobs:
   secret-gate:
     name: Check Managed Agents source access
+    # Repository credentials must never be exposed to PR-controlled scripts.
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -27,16 +30,9 @@ jobs:
       - name: Decide whether the E2E job can run
         id: gate
         env:
-          PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           SNBOT_GITHUB_TOKEN: ${{ secrets.SNBOT_GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_EVENT_NAME}" == "pull_request" && \
-                "${PR_HEAD_REPOSITORY:-}" != "${GITHUB_REPOSITORY}" ]]; then
-            echo "enabled=false" >> "${GITHUB_OUTPUT}"
-            echo "Skipping internal-source E2E for a fork pull request."
-            exit 0
-          fi
           if [[ -z "${SNBOT_GITHUB_TOKEN:-}" ]]; then
             echo "enabled=false" >> "${GITHUB_OUTPUT}"
             echo "::notice::SNBOT_GITHUB_TOKEN is not configured; skipping the E2E job."
@@ -47,15 +43,21 @@ jobs:
   e2e:
     name: SDK against pinned Managed Agents stack
     needs: secret-gate
-    if: needs.secret-gate.outputs.enabled == 'true'
-    runs-on: ${{ vars.E2E_RUNNER || 'ubuntu-latest' }}
+    if: >-
+      needs.secret-gate.outputs.enabled == 'true' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
       KIND_CLUSTER_NAME: orca-sdk-managed-agents
       KIND_HELM_NAMESPACE: orca-sdk-e2e
     steps:
-      - name: Check out SDK
+      - name: Check out triggering main commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       - name: Resolve dependency settings
         id: dependencies
@@ -74,7 +76,7 @@ jobs:
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
 
       - name: Check the e2e suite compiles before standing up a cluster
         run: go vet -tags e2e ./...

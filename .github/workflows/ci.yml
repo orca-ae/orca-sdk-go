@@ -28,6 +28,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Check E2E workflow security boundaries
+        run: python3 -m unittest discover -s tests/workflows -v
+
       - name: Run lint
         run: ./scripts/lint
 
