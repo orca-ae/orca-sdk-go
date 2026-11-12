@@ -72,13 +72,7 @@ the `e2e`-tagged suite in `scripts/lint`, but no longer run this private-source
 full-stack test before merge. The same stack is still tested on `main` and on
 the nightly schedule. No private source artifacts are transferred to PR jobs.
 
-This is a workflow trust-boundary fix, not a repository permission boundary.
-Someone who can push another workflow can still reference repository-level
-secrets. Administrators must separately protect `main` and workflow changes,
-replace the shared PAT with minimum-scope source/package-read credentials, and
-move credentials to an Environment restricted to trusted refs with appropriate
-reviewers. This change does not configure those settings. The trusted E2E job
-still needs a credential for private source and image pulls, including a local
-Kind imagePullSecret; PR code must never execute in that job.
+Repository administration and access configuration are managed separately from this workflow.
+The full-stack suite uses the configured source and image access settings.
 
 The workflow uploads no artifacts, because GitHub does not mask those.
