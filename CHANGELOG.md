@@ -11,6 +11,13 @@
   and unavailable hosted-extension assertions. Public SDK APIs, vendored
   contracts, and mocked hosted-extension tests are unchanged.
 
+## [0.4.1](https://github.com/orca-ae/orca-sdk-go/compare/v0.4.0...v0.4.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **ci:** isolate credentialed E2E from pull requests ([#4](https://github.com/orca-ae/orca-sdk-go/issues/4)) ([96391cb](https://github.com/orca-ae/orca-sdk-go/commit/96391cb90b797f58551c8c18d9e99871df2d8851))
+
 ## [0.4.0](https://github.com/orca-ae/orca-sdk-go/compare/v0.3.1...v0.4.0) (2026-09-28)
 
 
